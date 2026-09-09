@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Streamlit secrets
+.streamlit/secrets.toml
+
+# Local figure cache: downloaded on demand
+figure_cache/
+
+# Local QA / temporary outputs
+*_failures.json
+failed_papers.txt
+qa_*.csv
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
