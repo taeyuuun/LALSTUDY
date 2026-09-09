@@ -2,7 +2,7 @@
 
 > Learn a paper, understand the experiment, and keep learning without losing context.
 
-**Current version: `v0.1.0-beta`**
+**Current version: `v0.2.0-beta`**
 
 LALSTUDY is an experimental scientific-paper learning platform that connects two workflows:
 
@@ -20,7 +20,13 @@ General-purpose AI can summarize a paper, but students often still need to leave
 
 LALSTUDY is designed around those links.
 
-## v0.1.0-beta features
+## v0.1.1-beta features
+
+### 🌐 Korean / English support
+- Global language selector shared across pages
+- Bilingual primary UI
+- Bilingual prerequisite and method-purpose explanations
+- Original paper title/abstract/caption preserved as source text
 
 ### 📄 Learn a Paper
 - PDF upload
@@ -114,7 +120,7 @@ LALSTUDY/
 
 ## Current limitations
 
-LALSTUDY `v0.1.0-beta` is intentionally an MVP.
+LALSTUDY `v0.1.1-beta` is intentionally an MVP.
 
 - Learn a Paper currently uses rule-based / extractive analysis.
 - PDF parsing depends on the document text layer.
@@ -147,3 +153,25 @@ See [`CHANGELOG.md`](CHANGELOG.md).
 
 Code is released under the MIT License.  
 Research articles and figures remain subject to their respective source licenses and third-party rights.
+
+
+### Dynamic Korean paper output
+
+When Korean mode is selected, LALSTUDY translates dynamically extracted paper content such as:
+- Paper at a Glance
+- Why This Study?
+- Abstract
+- Figure auto-extracted summaries
+- In-paper concept context
+
+The English source is retained for verification. The beta currently uses `deep-translator` for machine translation and can fall back to the original source if translation is unavailable.
+
+
+### v0.2 UX adjustment
+
+Quick Scan is removed from the primary Learn a Paper workflow.  
+The page now focuses on one path:
+
+**PDF upload → API key → AI Deep Study → linked Method/Figure learning**
+
+The API-key input and primary analysis button are displayed directly in the main content area.

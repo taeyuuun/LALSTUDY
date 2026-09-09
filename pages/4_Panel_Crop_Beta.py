@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageOps
 import streamlit as st
+from i18n import language_selector, L
 
 # ============================================================
 # FILES
@@ -612,16 +613,16 @@ def crop_panel(
 # UI
 # ============================================================
 
-st.title(
-    "✂️ Experimental Panel Crop Explorer"
-)
+lang = language_selector()
 
-st.caption(
-    "Automatic panel cropping beta — "
-    "whitespace segmentation + caption labels"
-)
+st.title(L(lang,"✂️ Experimental Panel Crop Explorer","✂️ Experimental Panel Crop Explorer"))
 
-st.sidebar.header("Search")
+st.caption(L(lang,
+    "자동 panel crop beta — whitespace segmentation + caption labels",
+    "Automatic panel cropping beta — whitespace segmentation + caption labels"
+))
+
+st.sidebar.header(L(lang,"검색","Search"))
 
 selected_method = st.sidebar.selectbox(
     "Method",
@@ -631,12 +632,12 @@ selected_method = st.sidebar.selectbox(
 )
 
 keyword = st.sidebar.text_input(
-    "Keyword",
+    L(lang,"키워드","Keyword"),
     placeholder="Foxp3, T cell, IL-6 ..."
 ).strip()
 
 segmentation_mode = st.sidebar.radio(
-    "Crop 방식",
+    L(lang,"Crop 방식","Crop mode"),
     [
         "Auto whitespace",
         "Fallback regular grid"
@@ -741,20 +742,20 @@ for paper in profile.get(
             "panels": panels
         })
 
-st.write(
-    f"Panel crop 가능한 Figure: "
-    f"**{len(figure_items)}개**"
-)
+st.write(L(lang,
+    f"Panel crop 가능한 Figure: **{len(figure_items)}개**",
+    f"Figures available for panel cropping: **{len(figure_items)}**"
+))
 
 if not figure_items:
-    st.warning(
-        "현재 캐시된 이미지 중 panel label을 "
-        "2개 이상 인식한 Figure가 없습니다."
-    )
+    st.warning(L(lang,
+        "현재 캐시된 이미지 중 panel label을 2개 이상 인식한 Figure가 없습니다.",
+        "No cached Figure currently has two or more detected panel labels."
+    ))
     st.stop()
 
 selected_index = st.selectbox(
-    "Figure 선택",
+    L(lang,"Figure 선택","Select Figure"),
     range(
         len(figure_items)
     ),
@@ -781,7 +782,7 @@ img = Image.open(
 
 st.image(
     img,
-    caption="Original Figure",
+    caption=L(lang,"원본 Figure","Original Figure"),
     use_container_width=True
 )
 
@@ -789,10 +790,10 @@ expected = len(
     item["panels"]
 )
 
-st.write(
-    f"Caption에서 감지한 panel 수: "
-    f"**{expected}개**"
-)
+st.write(L(lang,
+    f"Caption에서 감지한 panel 수: **{expected}개**",
+    f"Panels detected from caption: **{expected}**"
+))
 
 # ============================================================
 # SPLIT
@@ -818,10 +819,10 @@ if segmentation_mode == "Auto whitespace":
     if len(rects) != expected:
 
         st.warning(
-            f"자동 segmentation이 "
-            f"{len(rects)}개 영역을 찾았습니다. "
-            f"caption panel 수({expected})와 달라 "
-            f"regular grid fallback을 사용합니다."
+            L(lang,
+            f"자동 segmentation이 {len(rects)}개 영역을 찾았습니다. caption panel 수({expected})와 달라 regular grid fallback을 사용합니다.",
+            f"Automatic segmentation found {len(rects)} regions, which differs from the caption panel count ({expected}); using regular-grid fallback."
+        )
         )
 
         work_img = trimmed
@@ -834,8 +835,10 @@ if segmentation_mode == "Auto whitespace":
     else:
 
         st.success(
-            f"자동 segmentation 성공: "
-            f"{len(rects)}개 영역"
+            L(lang,
+            f"자동 segmentation 성공: {len(rects)}개 영역",
+            f"Automatic segmentation succeeded: {len(rects)} regions"
+        )
         )
 
 else:
@@ -895,7 +898,7 @@ for start in range(
             )
 
             st.markdown(
-                "**Panel caption**"
+                f"**{L(lang,'Panel caption','Panel caption')}**"
             )
 
             st.write(
@@ -907,14 +910,13 @@ for start in range(
 # ============================================================
 
 with st.expander(
-    "원문 Figure caption 전체"
+    L(lang,"원문 Figure caption 전체","Full original Figure caption")
 ):
     st.write(
         item["caption"]
     )
 
-st.caption(
-    "Beta: automatic cropping uses whitespace/layout heuristics, "
-    "not OCR. Complex multi-panel figures can be split incorrectly. "
-    "If so, switch to the regular-grid fallback."
-)
+st.caption(L(lang,
+    "Beta: 자동 crop은 OCR이 아니라 whitespace/layout heuristic을 사용합니다. 복잡한 multi-panel Figure는 잘못 나뉠 수 있으며 그 경우 regular-grid fallback을 사용할 수 있습니다.",
+    "Beta: automatic cropping uses whitespace/layout heuristics, not OCR. Complex multi-panel figures can be split incorrectly. If so, switch to the regular-grid fallback."
+))

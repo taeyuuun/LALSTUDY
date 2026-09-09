@@ -45,3 +45,18 @@ For milestone versions:
 git tag -a v0.2.0-beta -m "LALSTUDY v0.2.0-beta"
 git push origin v0.2.0-beta
 ```
+
+
+## Publish v0.2.0-beta
+
+After copying the v0.2 files into your existing local repository:
+
+```powershell
+git add .
+git commit -m "Release LALSTUDY v0.2.0-beta AI Deep Study"
+git push
+git tag -a v0.2.0-beta -m "LALSTUDY v0.2.0-beta"
+git push origin v0.2.0-beta
+```
+
+For Streamlit Community Cloud, add `GEMINI_API_KEY` under the app's Secrets settings if you want the deployed demo to use a server-side key.

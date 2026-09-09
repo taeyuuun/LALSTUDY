@@ -2,6 +2,56 @@
 
 All notable LALSTUDY updates will be recorded here.
 
+## [0.2.0-beta] - 2026-09-10
+
+### Added
+- AI Deep Study for uploaded scientific PDFs
+- Gemini native PDF analysis
+- Structured paper logic map
+- Learner-depth selector
+- AI-generated prerequisite dependency explanations
+- Experiment-level What / Why / Readout / inference cards
+- Figure- and panel-level interpretation
+- Critical-reading module
+- Reviewer-question generation
+- Ordered learning path
+- Direct method deep links into Method Explorer / Figure Explorer
+- Korean/English AI output generated directly in the selected language
+- Session-level AI result reuse to avoid repeated API calls
+- Gemini secret / environment / session-key support
+
+### Design changes
+- AI mode separates general background knowledge from paper-specific evidence.
+- Rule-based ontology detection is retained as an API-free Quick Scan.
+- Translation services are no longer required for AI-generated Korean content.
+
+### Known limitations
+- AI interpretation can still contain errors and must be checked against the paper.
+- Inline Gemini PDF mode is limited to 50 MB.
+- Method ontology linking is approximate for names not already in the alias table.
+- API availability and quotas depend on the user's Gemini project.
+
+All notable LALSTUDY updates will be recorded here.
+
+## [0.1.1-beta]
+
+### Improved bilingual learning output
+- Korean mode now translates dynamically extracted paper content
+- Paper at a Glance is displayed in Korean
+- Why This Study? extraction is displayed in Korean
+- Abstract translation is shown while preserving the original
+- Figure auto-extracted summaries are displayed in Korean
+- In-paper concept context is translated with the English source preserved
+- Scientific method/concept terms are protected where possible during translation
+ - 2026-09-10
+
+### Added
+- Global Korean / English language selector
+- Bilingual primary UI across the integrated app
+- Bilingual prerequisite explanations in Learn a Paper
+- Bilingual experimental-method purpose explanations
+- Original source-paper text remains unchanged
+
 ## [0.1.0-beta] - 2026-09-10
 
 ### Added
@@ -22,3 +72,22 @@ All notable LALSTUDY updates will be recorded here.
 - Figure extraction and panel splitting are heuristic
 - Method matching can contain false positives
 - Current corpus is a keyword-retrieved Nature Communications OA subset
+
+
+### v0.2.0-beta UX hotfix
+- Removed Quick Scan from the main Learn a Paper interface
+- Moved Gemini API-key input into the main page
+- Made the AI Deep Study action the single primary workflow
+- Added explicit button activation guidance
+
+
+### API key state hotfix
+- Fixed Gemini API key disappearing after pressing the analysis button
+- API key input now uses one stable Streamlit session-state key
+- The key widget remains mounted across reruns
+- Added a clear-key control for session-entered keys
+
+
+### Gemini model hotfix
+- Updated default AI model from `gemini-2.5-flash` to `gemini-3.6-flash`
+- Keeps the current GenerateContent-based structured PDF analysis pipeline

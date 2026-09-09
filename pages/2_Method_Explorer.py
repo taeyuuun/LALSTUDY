@@ -4,6 +4,7 @@ import io
 import requests
 import streamlit as st
 from pathlib import Path
+from i18n import language_selector, L
 
 DATA_FILE = Path("method_profiles.json")
 IMAGE_INDEX_FILE = Path("figure_images.json")
@@ -150,43 +151,73 @@ def find_cached_image(pmcid, href):
 # HEADER
 # ============================================================
 
-st.title("🧬 Experimental Method Explorer")
+lang = language_selector()
+
+st.title(L(lang,"🧬 실험기법 Explorer","🧬 Experimental Method Explorer"))
 st.caption(
-    "Nature Communications OA immunology corpus — beta"
+    L(lang,"Nature Communications OA 면역학 관련 corpus — beta","Nature Communications OA immunology-related corpus — beta")
 )
 
 # ============================================================
 # SIDEBAR
 # ============================================================
 
-st.sidebar.header("Search")
+st.sidebar.header(L(lang,"검색","Search"))
+
+method_options = sorted(profiles_by_name.keys())
+
+jump_method = st.session_state.pop(
+    "lal_method_jump",
+    None
+)
+
+if (
+    jump_method
+    and jump_method in method_options
+):
+    st.session_state[
+        "lal_explorer_method"
+    ] = jump_method
+
+if (
+    st.session_state.get(
+        "lal_explorer_method"
+    )
+    not in method_options
+):
+    st.session_state[
+        "lal_explorer_method"
+    ] = method_options[0]
 
 selected_method = st.sidebar.selectbox(
     "Method",
-    sorted(profiles_by_name.keys())
+    method_options,
+    key="lal_explorer_method",
 )
 
 keyword = st.sidebar.text_input(
-    "Keyword",
+    L(lang,"키워드","Keyword"),
     placeholder="Foxp3, T cell, IL-6, tumor ..."
 ).strip()
 
+scope_labels = {
+    "both": L(lang,"논문 제목 + Figure caption","Paper title + Figure caption"),
+    "caption": L(lang,"Figure caption만","Figure caption only"),
+    "title": L(lang,"논문 제목만","Paper title only"),
+}
 search_scope = st.sidebar.radio(
-    "Keyword 검색 범위",
-    [
-        "논문 제목 + Figure caption",
-        "Figure caption만",
-        "논문 제목만"
-    ]
+    L(lang,"키워드 검색 범위","Keyword search scope"),
+    ["both","caption","title"],
+    format_func=lambda x: scope_labels[x]
 )
 
 show_only_figures = st.sidebar.checkbox(
-    "Figure가 연결된 논문만 보기",
+    L(lang,"Figure가 연결된 논문만 보기","Only papers linked to Figures"),
     value=False
 )
 
 max_results = st.sidebar.slider(
-    "최대 표시 논문 수",
+    L(lang,"최대 표시 논문 수","Maximum papers to display"),
     10, 200, 30, 10
 )
 
@@ -223,7 +254,7 @@ with right:
 # ============================================================
 
 st.divider()
-st.subheader("🔗 Frequently co-used methods")
+st.subheader(L(lang,"🔗 함께 자주 사용된 실험기법","🔗 Frequently co-used methods"))
 
 co_methods = profile.get("frequently_co_used_methods", [])
 
@@ -261,9 +292,9 @@ for paper in papers:
 
     if not keyword_lower:
         include = True
-    elif search_scope == "논문 제목 + Figure caption":
+    elif search_scope == "both":
         include = title_match or bool(matching_figures)
-    elif search_scope == "Figure caption만":
+    elif search_scope == "caption":
         include = bool(matching_figures)
     else:
         include = title_match
@@ -282,7 +313,7 @@ for paper in papers:
 # ============================================================
 
 st.divider()
-st.subheader("📚 Papers")
+st.subheader(L(lang,"📚 논문","📚 Papers"))
 
 st.write(
     f'검색 결과: **{len(filtered_papers)}편**'
@@ -350,7 +381,7 @@ for paper in filtered_papers[:max_results]:
 
         if not figures_to_show:
             st.info(
-                "현재 이 method와 직접 연결된 Figure caption이 없습니다."
+                L(lang,"현재 이 method와 직접 연결된 Figure caption이 없습니다.","No Figure caption is directly linked to this method in the current data.")
             )
             continue
 

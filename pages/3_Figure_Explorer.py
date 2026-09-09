@@ -8,6 +8,7 @@ from pathlib import Path
 import math
 import re
 import html
+from i18n import language_selector, L
 
 DATA_FILE = Path("method_profiles.json")
 IMAGE_INDEX_FILE = Path("figure_images.json")
@@ -546,52 +547,23 @@ def detect_comparisons(text):
 
     return found[:5]
 
-def infer_panel_purpose(panel_type, targets):
-    target_text = ", ".join(targets[:3]) if targets else "주요 지표"
-
+def infer_panel_purpose(panel_type, targets, lang):
+    target_text = ", ".join(targets[:3]) if targets else L(lang,"주요 지표","key readouts")
     if panel_type == "Flow cytometry / gating":
-        return (
-            f"세포 population을 gating하거나 {target_text} 양성 세포의 "
-            f"분포를 보여주는 패널로 추정됩니다."
-        )
-
+        return L(lang, f"세포 population을 gating하거나 {target_text} 양성 세포의 분포를 보여주는 패널로 추정됩니다.", f"Likely shows cell-population gating or the distribution of cells positive for {target_text}.")
     if panel_type == "Quantification / summary graph":
-        return (
-            f"다른 패널에서 관찰한 결과를 정량화하여 "
-            f"{target_text}의 차이를 비교하는 패널로 추정됩니다."
-        )
-
+        return L(lang, f"다른 패널에서 관찰한 결과를 정량화하여 {target_text}의 차이를 비교하는 패널로 추정됩니다.", f"Likely quantifies observations from other panels and compares differences in {target_text}.")
     if panel_type == "Microscopy / representative image":
-        return (
-            f"조직/세포에서 {target_text}의 위치 또는 형태를 "
-            f"대표 이미지로 보여주는 패널로 추정됩니다."
-        )
-
+        return L(lang, f"조직/세포에서 {target_text}의 위치 또는 형태를 대표 이미지로 보여주는 패널로 추정됩니다.", f"Likely provides representative images of the localization or morphology of {target_text} in cells or tissue.")
     if panel_type == "UMAP / dimensionality reduction":
-        return (
-            "고차원 단일세포 데이터를 저차원 공간에 배치해 "
-            "세포군 또는 상태의 구조를 보여주는 패널로 추정됩니다."
-        )
-
+        return L(lang,"고차원 단일세포 데이터를 저차원 공간에 배치해 세포군 또는 상태의 구조를 보여주는 패널로 추정됩니다.","Likely projects high-dimensional single-cell data into a low-dimensional space to show cell populations or states.")
     if panel_type == "Western blot / immunoblot":
-        return (
-            f"{target_text} 단백질의 abundance 또는 signaling 변화를 "
-            "band로 확인하는 패널로 추정됩니다."
-        )
-
+        return L(lang, f"{target_text} 단백질의 abundance 또는 signaling 변화를 band로 확인하는 패널로 추정됩니다.", f"Likely uses bands to assess abundance or signaling changes involving {target_text}.")
     if panel_type == "Heatmap":
-        return (
-            "여러 gene/protein/cell state의 상대적 패턴을 "
-            "색으로 비교하는 패널로 추정됩니다."
-        )
-
+        return L(lang,"여러 gene/protein/cell state의 상대적 패턴을 색으로 비교하는 패널로 추정됩니다.","Likely compares relative patterns across genes, proteins, or cell states using color intensity.")
     if panel_type == "Schematic / experimental design":
-        return (
-            "실험군, 처리 과정 또는 전체 workflow를 설명하는 "
-            "설계도 패널로 추정됩니다."
-        )
-
-    return f"{target_text}에 대한 실험 결과를 보여주는 패널로 추정됩니다."
+        return L(lang,"실험군, 처리 과정 또는 전체 workflow를 설명하는 설계도 패널로 추정됩니다.","Likely summarizes experimental groups, treatment steps, or the overall workflow.")
+    return L(lang, f"{target_text}에 대한 실험 결과를 보여주는 패널로 추정됩니다.", f"Likely presents an experimental result involving {target_text}.")
 
 def build_panel_card(panel_text, figure_level_method):
     panel_text = clean_markup(panel_text)
@@ -602,7 +574,7 @@ def build_panel_card(panel_text, figure_level_method):
     readouts = detect_readouts(panel_text)
     comparisons = detect_comparisons(panel_text)
     panel_type = detect_panel_type(panel_text)
-    purpose = infer_panel_purpose(panel_type, targets)
+    purpose = infer_panel_purpose(panel_type, targets, lang)
 
     return {
         "panel_type": panel_type,
@@ -615,16 +587,45 @@ def build_panel_card(panel_text, figure_level_method):
         "figure_level_method": figure_level_method
     }
 
-st.title("🧬 Experimental Figure Explorer")
-st.caption(
+lang = language_selector()
+
+st.title(L(lang,"🧬 실험 Figure Explorer","🧬 Experimental Figure Explorer"))
+st.caption(L(lang,
+    "Figure → Panel A/B/C/D → 실험 해석",
     "Figure → Panel A/B/C/D → experimental interpretation"
+))
+
+st.sidebar.header(L(lang,"Figure 검색","Figure Search"))
+
+method_options = sorted(profiles_by_name.keys())
+
+jump_method = st.session_state.pop(
+    "lal_method_jump",
+    None
 )
 
-st.sidebar.header("Figure Search")
+if (
+    jump_method
+    and jump_method in method_options
+):
+    st.session_state[
+        "lal_explorer_method"
+    ] = jump_method
+
+if (
+    st.session_state.get(
+        "lal_explorer_method"
+    )
+    not in method_options
+):
+    st.session_state[
+        "lal_explorer_method"
+    ] = method_options[0]
 
 selected_method = st.sidebar.selectbox(
     "Method",
-    sorted(profiles_by_name.keys())
+    method_options,
+    key="lal_explorer_method",
 )
 
 keyword = st.sidebar.text_input(
@@ -633,7 +634,7 @@ keyword = st.sidebar.text_input(
 ).strip()
 
 safe_only = st.sidebar.checkbox(
-    "공개 표시 가능 Figure만",
+    L(lang,"공개 표시 가능 Figure만","Only Figures allowed for public display"),
     value=True
 )
 
@@ -703,21 +704,21 @@ for paper in profile.get("papers", []):
         })
 
 st.divider()
-st.subheader("🖼 Panel-aware Figure Gallery")
-st.write(f"검색된 Figure: **{len(gallery_items)}개**")
+st.subheader(L(lang,"🖼 Panel-aware Figure Gallery","🖼 Panel-aware Figure Gallery"))
+st.write(L(lang,f"검색된 Figure: **{len(gallery_items)}개**",f"Figures found: **{len(gallery_items)}**"))
 
 panel_total = sum(
     len(item["panels"])
     for item in gallery_items
 )
 
-st.write(
-    f"자동 분리된 Panel/segment: "
-    f"**{panel_total}개**"
-)
+st.write(L(lang,
+    f"자동 분리된 Panel/segment: **{panel_total}개**",
+    f"Automatically separated panels/segments: **{panel_total}**"
+))
 
 if not gallery_items:
-    st.warning("조건에 맞는 Figure가 없습니다.")
+    st.warning(L(lang,"조건에 맞는 Figure가 없습니다.","No Figures match the current filters."))
     st.stop()
 
 search_signature = (
@@ -747,7 +748,7 @@ nav1, nav2, nav3 = st.columns([1, 3, 1])
 
 with nav1:
     if st.button(
-        "⬅ 이전",
+        L(lang,"⬅ 이전","⬅ Previous"),
         disabled=st.session_state.gallery_page <= 1,
         use_container_width=True
     ):
@@ -764,7 +765,7 @@ with nav2:
 
 with nav3:
     if st.button(
-        "다음 ➡",
+        L(lang,"다음 ➡","Next ➡"),
         disabled=st.session_state.gallery_page >= total_pages,
         use_container_width=True
     ):
@@ -794,8 +795,10 @@ pmcids_needed = sorted({
 
 if pmcids_needed:
     if st.button(
-        f"📥 현재 페이지 이미지 불러오기 "
-        f"({len(pmcids_needed)}개 논문)",
+        L(lang,
+            f"📥 현재 페이지 이미지 불러오기 ({len(pmcids_needed)}개 논문)",
+            f"📥 Load images for this page ({len(pmcids_needed)} papers)"
+        ),
         type="primary",
         use_container_width=True
     ):
@@ -812,7 +815,7 @@ if pmcids_needed:
 
         if failures:
             with st.expander(
-                f"다운로드 실패 {len(failures)}개"
+                L(lang,f"다운로드 실패 {len(failures)}개",f"Download failures: {len(failures)}")
             ):
                 for pmcid, message in failures:
                     st.write(pmcid, message)
@@ -847,11 +850,12 @@ for item in page_items:
                         use_container_width=True
                     )
                 else:
-                    st.info("이미지 미캐시")
+                    st.info(L(lang,"이미지 미캐시","Image not cached"))
             else:
-                st.warning(
-                    "⚠️ 권리 검토 필요 — 이미지를 표시하지 않습니다."
-                )
+                st.warning(L(lang,
+                    "⚠️ 권리 검토 필요 — 이미지를 표시하지 않습니다.",
+                    "⚠️ Rights review required — image is not displayed."
+                ))
 
         with meta_col:
             st.markdown(f"**Year:** {item['year']}")
@@ -877,14 +881,14 @@ for item in page_items:
                 st.warning(license_code)
 
         st.markdown(
-            "### 🔬 Panel-by-panel interpretation"
+            L(lang,"### 🔬 Panel별 해석","### 🔬 Panel-by-panel interpretation")
         )
 
         panels = item["panels"]
 
         panel_labels = [
             (
-                "전체 설명"
+                L(lang,"전체 설명","Overview")
                 if panel["label"] == "OVERVIEW"
                 else (
                     "Full Figure"
@@ -909,19 +913,21 @@ for item in page_items:
 
                     if panel["methods"]:
                         st.markdown(
-                            "**이 panel에서 명시적으로 확인된 실험기법**"
+                            L(lang,"**이 panel에서 명시적으로 확인된 실험기법**","**Experimental methods explicitly mentioned in this panel**")
                         )
                         st.write(
                             " · ".join(panel["methods"])
                         )
                     else:
                         st.caption(
-                            f"Panel 문장 자체에는 method가 명시되지 않았습니다. "
-                            f"Figure-level tag는 {selected_method}입니다."
+                            L(lang,
+                            f"Panel 문장 자체에는 method가 명시되지 않았습니다. Figure-level tag는 {selected_method}입니다.",
+                            f"The panel text does not explicitly name a method. The Figure-level tag is {selected_method}."
+                        )
                         )
 
                     if panel["samples"]:
-                        st.markdown("**샘플 / 모델**")
+                        st.markdown(L(lang,"**샘플 / 모델**","**Sample / Model**"))
                         st.write(
                             " · ".join(panel["samples"])
                         )
@@ -939,7 +945,7 @@ for item in page_items:
                         )
 
                     if panel["comparisons"]:
-                        st.markdown("**비교 구조**")
+                        st.markdown(L(lang,"**비교 구조**","**Comparison structure**"))
                         st.write(
                             " · ".join(panel["comparisons"])
                         )
@@ -949,19 +955,19 @@ for item in page_items:
                     st.write(panel["text"])
 
                     if panel["confidence"] == "fallback":
-                        st.warning(
-                            "Panel label을 안정적으로 분리하지 못해 "
-                            "Figure 전체 caption을 사용했습니다."
-                        )
+                        st.warning(L(lang,
+                            "Panel label을 안정적으로 분리하지 못해 Figure 전체 caption을 사용했습니다.",
+                            "Panel labels could not be separated reliably, so the full Figure caption is used."
+                        ))
                     elif panel["confidence"] == "medium":
                         st.caption(
                             "Panel label 자동 인식: medium confidence"
                         )
 
         with st.expander(
-            "🧠 이 Figure를 공부할 때 추천 순서"
+            L(lang,"🧠 이 Figure를 공부할 때 추천 순서","🧠 Suggested order for studying this Figure")
         ):
-            st.markdown(
+            st.markdown(L(lang,
                 """
 **1. Overview / schematic가 있으면 먼저 본다.**  
 실험군, 처리 순서, sample이 무엇인지 잡는다.
@@ -977,11 +983,27 @@ WT vs KO, control vs treatment, patient vs healthy 등 무엇을 기준으로 �
 
 **5. 마지막으로 논문의 주장과 연결한다.**  
 이 Figure가 단순 correlation인지, mechanism을 직접 지지하는 실험인지 구분한다.
+                """,
                 """
-            )
+**1. Start with an overview or schematic if available.**  
+Identify the groups, treatment sequence, and sample type.
+
+**2. Inspect observation panels such as gating, microscopy, or UMAP.**  
+Determine what was measured and how.
+
+**3. Check the quantification panel.**  
+Ask whether the visual difference is also supported numerically.
+
+**4. Identify the comparison groups.**  
+For example: WT vs KO, control vs treatment, patient vs healthy.
+
+**5. Connect the Figure back to the paper's claim.**  
+Distinguish simple correlation from experiments that directly support a mechanism.
+                """
+            ))
 
         with st.expander(
-            "📄 원문 Figure caption 전체"
+            L(lang,"📄 원문 Figure caption 전체","📄 Full original Figure caption")
         ):
             st.write(item["caption"])
 
@@ -1023,9 +1045,7 @@ WT vs KO, control vs treatment, patient vs healthy 등 무엇을 기준으로 �
 
 st.divider()
 
-st.caption(
-    "Panel parsing and interpretation are rule-based beta features. "
-    "Panel labels can occasionally be split incorrectly, and a "
-    "Figure-level method tag does not imply that every panel uses "
-    "that method."
-)
+st.caption(L(lang,
+    "Panel parsing과 해석은 규칙 기반 beta 기능입니다. Panel label이 잘못 분리될 수 있으며 Figure-level method tag가 모든 panel에 해당 method가 사용되었다는 뜻은 아닙니다.",
+    "Panel parsing and interpretation are rule-based beta features. Panel labels can occasionally be split incorrectly, and a Figure-level method tag does not imply that every panel uses that method."
+))
