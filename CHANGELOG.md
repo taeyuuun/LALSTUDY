@@ -2,6 +2,22 @@
 
 All notable LALSTUDY updates will be recorded here.
 
+## [0.2.2-beta] - 2026-09-10
+
+### Added
+- Server-side Gemini API key shared by public users
+- Automatic model fallback: Gemini 3.8 Flash → 3.7 Flash → 3.6 Flash
+- Automatic retry with exponential backoff for transient 429/5xx errors
+
+### Changed
+- Removed user-facing API-key input
+- API key is read only from Streamlit Secrets or the server environment
+
+### Operational note
+Public users consume the owner's Gemini quota/cost. Configure quota and billing safeguards.
+
+All notable LALSTUDY updates will be recorded here.
+
 ## [0.2.1-beta] - 2026-09-10
 
 ### Fixed

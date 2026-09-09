@@ -1,6 +1,8 @@
 import hashlib
 import json
 import os
+import time
+import random
 from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field
@@ -13,10 +15,15 @@ except Exception:
     types = None
 
 
-DEFAULT_MODEL = os.getenv(
-    "LALSTUDY_GEMINI_MODEL",
-    "gemini-3.6-flash"
-)
+DEFAULT_MODELS = [
+    x.strip()
+    for x in os.getenv(
+        "LALSTUDY_GEMINI_MODELS",
+        "gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash",
+    ).split(",")
+    if x.strip()
+]
+DEFAULT_MODEL = DEFAULT_MODELS[0]
 
 
 # ============================================================
@@ -272,60 +279,94 @@ def make_cache_key(
     return f"{digest}:bilingual:{depth}:{model}"
 
 
+def _transient(exc):
+    s = str(exc).lower()
+    return any(x in s for x in [
+        "429","rate limit","resource_exhausted","500","502","503","504",
+        "unavailable","high demand","timeout","deadline","internal",
+        "bad gateway","gateway timeout"
+    ])
+
+def _model_bad(exc):
+    s = str(exc).lower()
+    return "404" in s or "not_found" in s or ("model" in s and "not available" in s)
+
 def analyze_pdf(
     pdf_bytes: bytes,
     api_key: str,
     language: str = "ko",
     depth: str = "undergraduate",
     detected_methods: Optional[List[str]] = None,
-    model: str = DEFAULT_MODEL,
+    model: Optional[str] = None,
 ) -> BilingualPaperAnalysis:
     if not sdk_available():
-        raise RuntimeError(
-            "google-genai is not installed. "
-            "Run: python -m pip install -r requirements.txt"
-        )
-
+        raise RuntimeError("google-genai is not installed.")
     if not api_key:
-        raise ValueError("Gemini API key is required.")
-
+        raise ValueError("Server GEMINI_API_KEY is not configured.")
     if len(pdf_bytes) > 50 * 1024 * 1024:
-        raise ValueError(
-            "This beta sends PDFs inline and supports PDFs up to 50 MB."
-        )
+        raise ValueError("This beta supports PDFs up to 50 MB.")
 
     client = genai.Client(api_key=api_key)
-
     prompt = build_prompt(
         depth=depth,
         detected_methods=detected_methods or [],
     )
 
-    response = client.models.generate_content(
-        model=model,
-        contents=[
-            types.Part.from_bytes(
-                data=pdf_bytes,
-                mime_type="application/pdf",
-            ),
-            prompt,
-        ],
-        config=types.GenerateContentConfig(
-            temperature=0.15,
-            response_mime_type="application/json",
-            response_schema=BilingualPaperAnalysis,
-        ),
+    models = []
+    if model:
+        models.append(model)
+    for m in DEFAULT_MODELS:
+        if m not in models:
+            models.append(m)
+
+    errors = []
+
+    for model_name in models:
+        for attempt in range(3):
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=[
+                        types.Part.from_bytes(
+                            data=pdf_bytes,
+                            mime_type="application/pdf",
+                        ),
+                        prompt,
+                    ],
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        response_schema=BilingualPaperAnalysis,
+                    ),
+                )
+
+                if getattr(response, "parsed", None) is not None:
+                    parsed = response.parsed
+                    if isinstance(parsed, BilingualPaperAnalysis):
+                        return parsed
+                    return BilingualPaperAnalysis.model_validate(parsed)
+
+                body = getattr(response, "text", None)
+                if not body:
+                    raise RuntimeError(f"{model_name} returned no text.")
+
+                return BilingualPaperAnalysis.model_validate_json(body)
+
+            except Exception as exc:
+                errors.append(f"{model_name} attempt {attempt + 1}: {exc}")
+
+                if _model_bad(exc):
+                    break
+
+                if not _transient(exc):
+                    break
+
+                if attempt < 2:
+                    time.sleep(
+                        1.5 * (2 ** attempt)
+                        + random.uniform(0, 0.8)
+                    )
+
+    raise RuntimeError(
+        "All configured Gemini models failed. "
+        + " | ".join(errors[-4:])
     )
-
-    # SDK versions can expose parsed output differently.
-    if getattr(response, "parsed", None) is not None:
-        parsed = response.parsed
-        if isinstance(parsed, BilingualPaperAnalysis):
-            return parsed
-        return BilingualPaperAnalysis.model_validate(parsed)
-
-    text = getattr(response, "text", None)
-    if not text:
-        raise RuntimeError("The model returned no text.")
-
-    return BilingualPaperAnalysis.model_validate_json(text)

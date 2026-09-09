@@ -18,9 +18,10 @@ from ai_engine import (
     make_cache_key,
     sdk_available,
     DEFAULT_MODEL,
+    DEFAULT_MODELS,
 )
 
-APP_VERSION = "v0.2.1-beta"
+APP_VERSION = "v0.2.2-beta"
 METHOD_PROFILE_FILE = Path("method_profiles.json")
 
 st.set_page_config(
@@ -171,38 +172,21 @@ def extract_pdf_text(file_bytes):
 
 
 def get_secret_key():
-    # 1) Streamlit Cloud / local secrets
+    """
+    Server-side only.
+    Public users never enter or receive the Gemini API key.
+    """
     try:
         if "GEMINI_API_KEY" in st.secrets:
-            value = str(
-                st.secrets["GEMINI_API_KEY"]
-            ).strip()
-
+            value = str(st.secrets["GEMINI_API_KEY"]).strip()
             if value:
                 return value, "secret"
     except Exception:
         pass
 
-    # 2) Environment
-    value = os.getenv(
-        "GEMINI_API_KEY",
-        ""
-    ).strip()
-
+    value = os.getenv("GEMINI_API_KEY", "").strip()
     if value:
         return value, "environment"
-
-    # 3) Current Streamlit session.
-    # Use ONE stable key for both the widget and the analysis engine.
-    value = str(
-        st.session_state.get(
-            "lalstudy_gemini_key",
-            ""
-        )
-    ).strip()
-
-    if value:
-        return value, "session"
 
     return "", None
 
@@ -301,29 +285,12 @@ if lang == "ko":
 existing_key, key_source = get_secret_key()
 
 if existing_key:
-    st.sidebar.success(
-        L(
-            lang,
-            "✨ AI 연결 준비 완료",
-            "✨ AI ready",
-        )
-    )
+    st.sidebar.success(L(lang, "✨ AI service ready", "✨ AI service ready"))
 else:
-    st.sidebar.info(
-        L(
-            lang,
-            "PDF 업로드 후 본문에서 Gemini API key를 입력하세요.",
-            "Upload a PDF, then enter your Gemini API key in the main page.",
-        )
-    )
+    st.sidebar.error(L(lang, "관리자 API key 미설정", "Server API key missing"))
 
-st.sidebar.caption(
-    L(
-        lang,
-        f"AI model: {DEFAULT_MODEL}",
-        f"AI model: {DEFAULT_MODEL}",
-    )
-)
+st.sidebar.caption("AI model: automatic fallback")
+st.sidebar.caption(" → ".join(DEFAULT_MODELS))
 
 
 # ============================================================
@@ -542,100 +509,39 @@ m3.metric(
 st.divider()
 
 st.subheader(
-    L(
-        lang,
-        "✨ AI Deep Study 시작",
-        "✨ Start AI Deep Study",
-    )
+    L(lang, "✨ AI Deep Study", "✨ AI Deep Study")
 )
 
 st.write(
     L(
         lang,
-        "PDF 전체를 직접 읽고 **연구 질문 → 논리 지도 → 선수지식 → 실험 전략 → Figure 해석 → 비판적 읽기** 순서로 학습 자료를 만듭니다.",
-        "Reads the full PDF and builds a learning path from **research question → logic map → prerequisites → experimental strategy → Figure interpretation → critical reading**.",
+        "PDF 전체를 읽고 **연구 질문 → 논리 지도 → 선수지식 → 실험 전략 → Figure 해석 → 비판적 읽기** 순서로 학습 자료를 생성합니다.",
+        "Reads the full PDF and builds **research question → logic map → prerequisites → experiments → Figures → critical reading**.",
     )
 )
-
-st.markdown(
-    f"#### {L(lang,'🔑 Gemini API key','🔑 Gemini API key')}"
-)
-
-# Keep the widget mounted on every rerun.
-# This prevents Streamlit widget-state cleanup from erasing a user-entered key.
-if key_source in ("secret", "environment"):
-    st.success(
-        L(
-            lang,
-            "서버에 Gemini API key가 연결되어 있습니다.",
-            "A server-side Gemini API key is connected.",
-        )
-    )
-else:
-    st.text_input(
-        L(
-            lang,
-            "API key를 입력하세요",
-            "Enter your API key",
-        ),
-        type="password",
-        key="lalstudy_gemini_key",
-        placeholder="AIza...",
-        help=L(
-            lang,
-            "키는 프로젝트 파일에 저장하지 않고 현재 Streamlit 세션에서만 유지합니다.",
-            "The key is not written to project files and is kept only in the current Streamlit session.",
-        ),
-    )
-
-# Re-read AFTER rendering the widget, so the current run uses the latest value.
-existing_key, key_source = get_secret_key()
-
-if existing_key and key_source == "session":
-    st.success(
-        L(
-            lang,
-            "API key가 현재 세션에 유지되고 있습니다.",
-            "API key is retained in the current session.",
-        )
-    )
 
 with st.expander(
-    L(
-        lang,
-        "PDF / API 사용 안내",
-        "PDF / API usage note",
-    )
+    L(lang, "AI 사용 안내", "AI usage note")
 ):
     st.write(
         L(
             lang,
-            "AI 분석을 실행하면 업로드한 PDF가 Gemini API로 전송됩니다. "
-            "공개 논문 사용을 권장합니다. 비공개·미출판 자료는 API 서비스의 "
-            "데이터 처리 조건을 먼저 확인하세요.",
-            "When AI analysis runs, the uploaded PDF is sent to the Gemini API. "
-            "Public papers are recommended. Check the API provider's data terms "
-            "before using confidential or unpublished material.",
+            "업로드한 PDF는 Gemini API로 전송됩니다. LALSTUDY 서버의 API key를 사용하므로 사용자는 key를 입력할 필요가 없습니다. 공개 논문 사용을 권장합니다.",
+            "The PDF is sent to the Gemini API. LALSTUDY uses a server-side key, so users do not need their own key. Public papers are recommended.",
         )
     )
 
-if key_source == "session":
-    if st.button(
-        L(lang, "🔒 입력한 API key 지우기", "🔒 Clear entered API key"),
-        key="clear_lalstudy_gemini_key",
-    ):
-        st.session_state["lalstudy_gemini_key"] = ""
-        st.rerun()
-
-
-if not sdk_available():
+if not existing_key:
     st.error(
         L(
             lang,
-            "`google-genai`가 설치되지 않았습니다. `python -m pip install -r requirements.txt`를 실행하세요.",
-            "`google-genai` is not installed. Run `python -m pip install -r requirements.txt`.",
+            "서버 Gemini API key가 설정되지 않았습니다.",
+            "Server Gemini API key is not configured.",
         )
     )
+
+if not sdk_available():
+    st.error("`google-genai` is not installed.")
 
 if len(pdf_bytes) > 50 * 1024 * 1024:
     st.error(
@@ -663,35 +569,21 @@ analyze_clicked = st.button(
     disabled=not can_run,
 )
 
-if not existing_key:
-    st.caption(
-        L(
-            lang,
-            "↑ API key를 입력하면 버튼이 활성화됩니다.",
-            "↑ Enter an API key to enable the button.",
-        )
-    )
-
-
 cache_key = make_cache_key(
     pdf_bytes,
     "bilingual",
     depth,
-    DEFAULT_MODEL,
+    "auto-flash-pool",
 )
 
-result_key = (
-    "lal_ai_result:"
-    + cache_key
-)
-
+result_key = "lal_ai_result:" + cache_key
 
 if analyze_clicked:
     with st.spinner(
         L(
             lang,
-            "논문의 논리와 Figure를 재구성하는 중입니다. 첫 분석은 시간이 조금 걸릴 수 있습니다...",
-            "Reconstructing the paper's logic and Figures. The first analysis may take a little while...",
+            "AI 분석 중... 서버가 혼잡하면 자동 재시도 후 다른 Flash model로 전환합니다.",
+            "Analyzing... transient failures are retried and then another Flash model is used automatically.",
         )
     ):
         try:
@@ -704,7 +596,7 @@ if analyze_clicked:
                     name
                     for name, _ in rule_methods.most_common(30)
                 ],
-                model=DEFAULT_MODEL,
+                model=None,
             )
 
             st.session_state[
@@ -720,7 +612,6 @@ if analyze_clicked:
                 )
             )
 
-
 analysis_bundle = st.session_state.get(
     result_key
 )
@@ -728,20 +619,14 @@ analysis_bundle = st.session_state.get(
 analysis_data = None
 
 if analysis_bundle:
-    # v0.2.1+: one analysis contains both Korean and English.
     if (
-        isinstance(
-            analysis_bundle,
-            dict
-        )
+        isinstance(analysis_bundle, dict)
         and "ko" in analysis_bundle
         and "en" in analysis_bundle
     ):
         analysis_data = analysis_bundle[
             lang
         ]
-
-    # Backward-compatible fallback for a stale v0.2.0 session.
     else:
         analysis_data = analysis_bundle
 

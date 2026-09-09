@@ -2,7 +2,7 @@
 
 > Learn a paper, understand the experiment, and keep learning without losing context.
 
-**Current version: `v0.2.1-beta`**
+**Current version: `v0.2.2-beta`**
 
 LALSTUDY is an experimental scientific-paper learning platform that connects two workflows:
 
@@ -201,3 +201,17 @@ Switching the UI language only changes which stored view is rendered.
 Korean mode follows an **English-first scientific terminology** style:
 Korean explanatory grammar is mixed with conventional English terms such as
 `lysosome`, `autophagy`, `Flow cytometry`, `phosphorylation`, and gene/protein names.
+
+## v0.2.2 server-side AI
+
+All visitors use the deployment owner's server-side `GEMINI_API_KEY`.
+
+The key is stored in Streamlit Cloud Secrets and is never shown in the UI.
+
+Automatic model order:
+
+`gemini-3.8-flash → gemini-3.7-flash → gemini-3.6-flash`
+
+Transient 429/5xx errors are retried before fallback.
+
+**Important:** a public app can consume the owner's API quota and billing budget.
