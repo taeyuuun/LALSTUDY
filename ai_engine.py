@@ -118,6 +118,15 @@ class PaperAnalysis(BaseModel):
     learning_path: List[LearningItem] = Field(default_factory=list)
 
 
+class BilingualPaperAnalysis(BaseModel):
+    """
+    One PDF analysis contains BOTH display languages.
+    Language switching in the UI therefore never requires another PDF analysis.
+    """
+    ko: PaperAnalysis
+    en: PaperAnalysis
+
+
 # ============================================================
 # PROMPT
 # ============================================================
@@ -141,20 +150,7 @@ experimental design, statistics, limitations, and interpretation.
 }
 
 
-def build_prompt(language: str, depth: str, detected_methods: List[str]) -> str:
-    if language == "ko":
-        output_instruction = """
-Write all explanatory prose in natural Korean.
-Keep conventional scientific names, gene/protein symbols, assay names,
-and method names such as Flow cytometry, Western blotting, scRNA-seq,
-FOXP3, STAT5, etc. in their conventional scientific form when useful.
-Do not awkwardly translate standard technical terms merely to make them Korean.
-"""
-    else:
-        output_instruction = """
-Write all explanatory prose in clear scientific English.
-"""
-
+def build_prompt(depth: str, detected_methods: List[str]) -> str:
     method_hint = ", ".join(detected_methods[:30]) if detected_methods else "none provided"
 
     return f"""
@@ -168,13 +164,51 @@ Reconstruct the paper as a learning system for a reader who wants to understand:
 (4) what each experiment and Figure actually establishes,
 (5) what remains uncertain.
 
-{output_instruction}
+IMPORTANT OUTPUT LANGUAGE RULE
+------------------------------
+Return TWO semantically equivalent versions of the complete analysis:
+
+- `en`: clear scientific English.
+- `ko`: natural Korean explanatory prose using an ENGLISH-FIRST life-science terminology style.
+
+For `ko`, DO NOT mechanically transliterate or translate specialized biological
+terms into Hangul when researchers commonly use the English term.
+
+Use Korean grammar/connective prose, but preserve technical nouns and phrases
+in English whenever practical, especially:
+- organelles and cellular structures
+- pathways and molecular processes
+- gene/protein names
+- cell types and immune subsets
+- assay / experimental method names
+- omics and bioinformatics terms
+- pharmacology / molecular biology terminology
+
+Preferred Korean-style examples:
+- "lysosome의 acidification이 감소했다"
+- "autophagy flux를 측정했다"
+- "Flow cytometry로 Treg population을 분석했다"
+- "STAT5 phosphorylation이 증가했다"
+- "single-cell RNA sequencing으로 cell state를 구분했다"
+
+Avoid forms such as:
+- "리소좀" when `lysosome` is appropriate
+- "엔도좀" when `endosome` is appropriate
+- "오토파지" when `autophagy` is appropriate
+- unnecessarily translating standard method names
+
+When a technical term appears in the PDF, preferentially preserve its original
+English spelling/capitalization in the Korean version.
+
+The Korean and English versions MUST represent the same scientific interpretation.
+Do not independently invent different claims between languages.
 
 Learner depth:
 {DEPTH_INSTRUCTIONS.get(depth, DEPTH_INSTRUCTIONS["undergraduate"])}
 
 LALSTUDY's rule-based detector independently found these possible methods:
 {method_hint}
+
 Treat this only as a hint. Verify methods against the PDF itself.
 Do not force a method into the analysis if the PDF does not support it.
 
@@ -192,12 +226,11 @@ STRICT GROUNDING RULES
 8. "What it does not prove" should identify the key inference boundary.
 9. For experiments, explain WHY the chosen method answers the scientific question,
    not merely what the method generally does.
-10. Prefer the conventional English name for experimental methods so that they can
-    link to LALSTUDY's method ontology.
+10. Prefer conventional English method names so they can link to LALSTUDY ontology.
 
 OUTPUT GOAL
 -----------
-Build:
+For BOTH `ko` and `en`, build:
 - a compact paper overview,
 - a causal/argument logic map,
 - prerequisite concepts with dependency relationships,
@@ -206,18 +239,18 @@ Build:
 - a critical-reading section,
 - an ordered learning path.
 
-For the logic map, try to reconstruct the flow:
+For the logic map:
 Background → Gap → Question/Hypothesis → Experiment → Observation → Inference → Next question → Conclusion.
 
-For each Figure, focus on:
+For each Figure:
 WHAT question is asked?
 HOW is it tested?
 WHAT is directly observed?
 WHY does that matter?
-WHAT does it prove?
-WHAT does it NOT prove?
+WHAT does it support?
+WHAT does it NOT establish?
 
-Do not include references that are merely cited by the paper as if they were findings of this paper.
+Do not include references merely cited by the paper as if they were findings of this study.
 """
 
 
@@ -236,7 +269,7 @@ def make_cache_key(
     model: str,
 ) -> str:
     digest = hashlib.sha256(pdf_bytes).hexdigest()
-    return f"{digest}:{language}:{depth}:{model}"
+    return f"{digest}:bilingual:{depth}:{model}"
 
 
 def analyze_pdf(
@@ -246,7 +279,7 @@ def analyze_pdf(
     depth: str = "undergraduate",
     detected_methods: Optional[List[str]] = None,
     model: str = DEFAULT_MODEL,
-) -> PaperAnalysis:
+) -> BilingualPaperAnalysis:
     if not sdk_available():
         raise RuntimeError(
             "google-genai is not installed. "
@@ -264,7 +297,6 @@ def analyze_pdf(
     client = genai.Client(api_key=api_key)
 
     prompt = build_prompt(
-        language=language,
         depth=depth,
         detected_methods=detected_methods or [],
     )
@@ -281,19 +313,19 @@ def analyze_pdf(
         config=types.GenerateContentConfig(
             temperature=0.15,
             response_mime_type="application/json",
-            response_schema=PaperAnalysis,
+            response_schema=BilingualPaperAnalysis,
         ),
     )
 
     # SDK versions can expose parsed output differently.
     if getattr(response, "parsed", None) is not None:
         parsed = response.parsed
-        if isinstance(parsed, PaperAnalysis):
+        if isinstance(parsed, BilingualPaperAnalysis):
             return parsed
-        return PaperAnalysis.model_validate(parsed)
+        return BilingualPaperAnalysis.model_validate(parsed)
 
     text = getattr(response, "text", None)
     if not text:
         raise RuntimeError("The model returned no text.")
 
-    return PaperAnalysis.model_validate_json(text)
+    return BilingualPaperAnalysis.model_validate_json(text)

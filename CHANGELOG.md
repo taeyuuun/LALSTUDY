@@ -2,6 +2,21 @@
 
 All notable LALSTUDY updates will be recorded here.
 
+## [0.2.1-beta] - 2026-09-10
+
+### Fixed
+- Active uploaded paper now survives navigation away from Learn a Paper
+- Language switching no longer creates a separate PDF-analysis cache
+- Gemini API key remains independent of language and active-paper state
+
+### Changed
+- A single AI request now produces both Korean and English learning maps
+- Korean output uses an English-first scientific terminology policy
+- Specialized biological terms should remain in their conventional English form where practical
+- Added explicit Active Paper / Clear Paper controls
+
+All notable LALSTUDY updates will be recorded here.
+
 ## [0.2.0-beta] - 2026-09-10
 
 ### Added

@@ -2,7 +2,7 @@
 
 > Learn a paper, understand the experiment, and keep learning without losing context.
 
-**Current version: `v0.2.0-beta`**
+**Current version: `v0.2.1-beta`**
 
 LALSTUDY is an experimental scientific-paper learning platform that connects two workflows:
 
@@ -175,3 +175,29 @@ The page now focuses on one path:
 **PDF upload → API key → AI Deep Study → linked Method/Figure learning**
 
 The API-key input and primary analysis button are displayed directly in the main content area.
+
+
+## v0.2.1 state & bilingual update
+
+The active paper is now a session-level object rather than a page-local upload widget.
+
+```text
+Active Paper
+├─ PDF bytes
+├─ filename / hash
+├─ bilingual AI analysis
+└─ current learning preferences
+```
+
+This means users can move from `Learn a Paper` to `Method Explorer` or
+`Figure Explorer` and return without uploading the PDF again.
+
+One Deep Study call generates both:
+- Korean learning output
+- English learning output
+
+Switching the UI language only changes which stored view is rendered.
+
+Korean mode follows an **English-first scientific terminology** style:
+Korean explanatory grammar is mixed with conventional English terms such as
+`lysosome`, `autophagy`, `Flow cytometry`, `phosphorylation`, and gene/protein names.

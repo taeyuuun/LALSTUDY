@@ -3,6 +3,7 @@ import json
 import os
 import re
 import html
+import hashlib
 from collections import Counter
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -19,7 +20,7 @@ from ai_engine import (
     DEFAULT_MODEL,
 )
 
-APP_VERSION = "v0.2.0-beta"
+APP_VERSION = "v0.2.1-beta"
 METHOD_PROFILE_FILE = Path("method_profiles.json")
 
 st.set_page_config(
@@ -292,6 +293,11 @@ st.sidebar.caption(
     )
 )
 
+if lang == "ko":
+    st.sidebar.caption(
+        "🧬 용어 스타일: Korean prose + English scientific terms"
+    )
+
 existing_key, key_source = get_secret_key()
 
 if existing_key:
@@ -337,13 +343,67 @@ st.caption(
 uploaded = st.file_uploader(
     L(
         lang,
-        "논문 PDF 업로드",
-        "Upload paper PDF",
+        "논문 PDF 업로드 / 교체",
+        "Upload / replace paper PDF",
     ),
     type=["pdf"],
+    key="lalstudy_pdf_uploader",
 )
 
-if uploaded is None:
+# ------------------------------------------------------------
+# ACTIVE PAPER STATE
+# ------------------------------------------------------------
+# A FileUploader widget belongs to this page and may disappear when the user
+# navigates away. Store the actual bytes under non-widget session keys so the
+# active paper survives navigation across the whole multipage app.
+
+if uploaded is not None:
+    new_bytes = uploaded.getvalue()
+    new_hash = hashlib.sha256(
+        new_bytes
+    ).hexdigest()
+
+    old_hash = st.session_state.get(
+        "lalstudy_active_paper_hash"
+    )
+
+    if new_hash != old_hash:
+        # A genuinely new paper replaces the current active paper.
+        # Clear old AI analysis bundles while preserving API key/preferences.
+        for state_key in list(
+            st.session_state.keys()
+        ):
+            if str(state_key).startswith(
+                "lal_ai_result:"
+            ):
+                del st.session_state[
+                    state_key
+                ]
+
+    st.session_state[
+        "lalstudy_active_paper_bytes"
+    ] = new_bytes
+
+    st.session_state[
+        "lalstudy_active_paper_name"
+    ] = uploaded.name
+
+    st.session_state[
+        "lalstudy_active_paper_hash"
+    ] = new_hash
+
+
+pdf_bytes = st.session_state.get(
+    "lalstudy_active_paper_bytes"
+)
+
+paper_name = st.session_state.get(
+    "lalstudy_active_paper_name",
+    "",
+)
+
+
+if not pdf_bytes:
     st.info(
         L(
             lang,
@@ -356,7 +416,7 @@ if uploaded is None:
         L(
             lang,
             """
-### v0.2.0-beta의 핵심
+### v0.2.1-beta
 
 **AI Deep Study**
 - 연구 질문 / knowledge gap / hypothesis
@@ -367,12 +427,10 @@ if uploaded is None:
 - 논문의 약한 고리와 추가실험
 - 개인 수준에 맞춘 다음 학습 순서
 
-**기존 LALSTUDY와 연결**
-- PDF에서 감지된 method → Method Explorer
-- method → 실제 Nature Communications Figure 사례
+한 번 업로드한 PDF와 분석 결과는 페이지를 이동해도 현재 session에 유지됩니다.
 """,
             """
-### What is new in v0.2.0-beta?
+### v0.2.1-beta
 
 **AI Deep Study**
 - Research question / knowledge gap / hypothesis
@@ -383,9 +441,7 @@ if uploaded is None:
 - Critical reading and missing experiments
 - Level-adapted learning path
 
-**Linked to existing LALSTUDY data**
-- Detected method → Method Explorer
-- Method → real Nature Communications Figure examples
+The active PDF and its analysis stay available while you navigate between pages in the current session.
 """,
         )
     )
@@ -393,7 +449,46 @@ if uploaded is None:
     st.stop()
 
 
-pdf_bytes = uploaded.getvalue()
+with st.container(
+    border=True
+):
+    c_paper, c_clear = st.columns(
+        [5, 1]
+    )
+
+    with c_paper:
+        st.markdown(
+            f"**{L(lang,'📌 현재 논문','📌 Active paper')}**  \n"
+            f"{paper_name}"
+        )
+
+    with c_clear:
+        if st.button(
+            L(
+                lang,
+                "논문 닫기",
+                "Clear paper",
+            ),
+            use_container_width=True,
+            key="lalstudy_clear_active_paper",
+        ):
+            for state_key in list(
+                st.session_state.keys()
+            ):
+                if (
+                    str(state_key).startswith(
+                        "lalstudy_active_paper_"
+                    )
+                    or str(state_key).startswith(
+                        "lal_ai_result:"
+                    )
+                ):
+                    del st.session_state[
+                        state_key
+                    ]
+
+            st.rerun()
+
 
 with st.spinner(
     L(
@@ -580,7 +675,7 @@ if not existing_key:
 
 cache_key = make_cache_key(
     pdf_bytes,
-    lang,
+    "bilingual",
     depth,
     DEFAULT_MODEL,
 )
@@ -626,9 +721,29 @@ if analyze_clicked:
             )
 
 
-analysis_data = st.session_state.get(
+analysis_bundle = st.session_state.get(
     result_key
 )
+
+analysis_data = None
+
+if analysis_bundle:
+    # v0.2.1+: one analysis contains both Korean and English.
+    if (
+        isinstance(
+            analysis_bundle,
+            dict
+        )
+        and "ko" in analysis_bundle
+        and "en" in analysis_bundle
+    ):
+        analysis_data = analysis_bundle[
+            lang
+        ]
+
+    # Backward-compatible fallback for a stale v0.2.0 session.
+    else:
+        analysis_data = analysis_bundle
 
 
 # ============================================================
@@ -639,8 +754,8 @@ if analysis_data:
     st.success(
         L(
             lang,
-            "AI Deep Study가 생성되었습니다. 같은 세션에서는 다시 API를 호출하지 않습니다.",
-            "AI Deep Study generated. The same result is reused in this session without another API call.",
+            "AI Deep Study가 생성되었습니다. 한국어/English 결과가 함께 저장되어 언어를 바꿔도 다시 분석하지 않습니다.",
+            "AI Deep Study generated. Korean and English results are stored together, so switching language does not re-analyze the PDF.",
         )
     )
 
@@ -667,7 +782,7 @@ if analysis_data:
         st.header(
             overview.get(
                 "title",
-                uploaded.name,
+                paper_name,
             )
         )
 
@@ -1361,7 +1476,7 @@ if analysis_data:
             ),
             file_name=(
                 Path(
-                    uploaded.name
+                    paper_name
                 ).stem
                 + "_lalstudy_v020.json"
             ),
