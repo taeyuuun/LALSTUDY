@@ -24,7 +24,13 @@ from ai_engine import (
     FIGURE_MODELS,
 )
 
-APP_VERSION = "v0.2.3-beta"
+from figure_in_study import (
+    extract_study_figures,
+    find_matching_figure,
+    pymupdf_available,
+)
+
+APP_VERSION = "v0.2.4-beta"
 METHOD_PROFILE_FILE = Path("method_profiles.json")
 
 st.set_page_config(
@@ -196,6 +202,14 @@ def extract_pdf_text(file_bytes):
             x["text"]
             for x in pages
         ),
+    )
+
+
+@st.cache_data(show_spinner=False)
+def get_study_figures(file_bytes, paper_hash):
+    return extract_study_figures(
+        pdf_bytes=file_bytes,
+        paper_hash=paper_hash,
     )
 
 
@@ -631,6 +645,26 @@ m3.metric(
         "PDF size",
     ),
     f"{len(pdf_bytes)/(1024*1024):.1f} MB",
+)
+
+
+if pymupdf_available():
+    try:
+        extracted_study_figures = get_study_figures(
+            pdf_bytes,
+            active_hash(),
+        )
+    except Exception:
+        extracted_study_figures = []
+else:
+    extracted_study_figures = []
+
+st.caption(
+    L(
+        lang,
+        f"Study figure crops: {len(extracted_study_figures)}",
+        f"Study figure crops: {len(extracted_study_figures)}",
+    )
 )
 
 if len(paper_text) < 500:
@@ -1394,10 +1428,50 @@ with tabs[4]:
     st.caption(
         L(
             lang,
-            "이 단계만 PDF 자체를 다시 AI에 전달합니다. Figure를 보고 싶을 때만 호출합니다.",
-            "Only this stage sends the PDF itself again, and only when you request Figure analysis.",
+            "실제 study Figure crop과 AI 해석을 함께 보여줍니다. Figure 이미지는 PDF에서 로컬로 추출하므로 추가 AI 호출이 필요 없습니다.",
+            "Show the actual study figure crop together with the AI interpretation. Figure images are extracted locally from the PDF and do not require an extra AI call.",
         )
     )
+
+    if not extracted_study_figures:
+        if not pymupdf_available():
+            st.warning(
+                L(
+                    lang,
+                    "PyMuPDF가 설치되지 않아 study Figure를 추출할 수 없습니다. `python -m pip install -r requirements.txt` 후 다시 실행하세요.",
+                    "PyMuPDF is not installed, so study figures cannot be extracted. Run `python -m pip install -r requirements.txt` and restart.",
+                )
+            )
+        else:
+            st.info(
+                L(
+                    lang,
+                    "PDF에서 자동 추출된 Figure crop이 아직 없습니다. 캡션 구조가 복잡한 PDF에서는 추출이 불완전할 수 있습니다.",
+                    "No automatically extracted study figure crops were found. Extraction can be incomplete for PDFs with complex caption layouts.",
+                )
+            )
+    else:
+        with st.expander(
+            L(
+                lang,
+                "📚 PDF에서 추출된 Figure 목록 보기",
+                "📚 View extracted study figures from PDF",
+            ),
+            expanded=False,
+        ):
+            for item in extracted_study_figures:
+                st.markdown(
+                    f"**{item.get('figure_label','Figure')}** · "
+                    f"{L(lang,'page','page')} {item.get('page_number','?')}"
+                )
+                try:
+                    st.image(
+                        item.get("image_path"),
+                        caption=item.get("caption", ""),
+                        use_container_width=True,
+                    )
+                except Exception:
+                    st.caption(item.get("image_path", ""))
 
     if not figures_record:
         if st.button(
@@ -1455,10 +1529,48 @@ with tabs[4]:
                 [],
             )
         ):
+            matching_item = find_matching_figure(
+                extracted_study_figures,
+                figure.get("figure_label", ""),
+            )
+
             with st.expander(
                 f"{figure.get('figure_label','Figure')} — "
                 f"{figure.get('role_in_story','')}"
             ):
+                if matching_item:
+                    st.image(
+                        matching_item.get("image_path"),
+                        caption=(
+                            f"{matching_item.get('figure_label','Figure')} · "
+                            f"{L(lang,'page','page')} {matching_item.get('page_number','?')}"
+                        ),
+                        use_container_width=True,
+                    )
+
+                    with st.expander(
+                        L(
+                            lang,
+                            "원문 caption 보기",
+                            "View source caption",
+                        ),
+                        expanded=False,
+                    ):
+                        st.write(
+                            matching_item.get(
+                                "caption",
+                                "",
+                            )
+                        )
+                elif extracted_study_figures:
+                    st.info(
+                        L(
+                            lang,
+                            "해당 Figure label과 자동 추출 crop을 직접 매칭하지 못했습니다. 위의 '추출된 Figure 목록'에서 수동 확인할 수 있습니다.",
+                            "Could not directly match this Figure label to an extracted crop. You can still check the extracted figure list above.",
+                        )
+                    )
+
                 st.markdown(
                     f"### {L(lang,'❓ 핵심 질문','❓ Main question')}"
                 )

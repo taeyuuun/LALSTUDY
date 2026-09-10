@@ -2,7 +2,7 @@
 
 > Learn a paper, understand the experiment, and keep learning without losing context.
 
-**Current version: `v0.2.3-beta`**
+**Current version: `v0.2.4-beta`**
 
 LALSTUDY is an experimental scientific-paper learning platform that connects two workflows:
 
@@ -255,3 +255,21 @@ gemini-3.8-flash → gemini-3.5-flash → gemini-3.5-flash-lite
 Figure stage:
 gemini-3.8-flash → gemini-3.5-flash
 ```
+
+
+## v0.2.4 — Figure in Study
+
+The Figures tab now combines **AI interpretation** with the **actual figure image extracted from the uploaded PDF**.
+
+### What it does
+- detects caption blocks such as `Fig. 1`, `Figure 2`
+- crops likely figure regions from the PDF locally using PyMuPDF
+- caches them under `figure_cache/study_figures/<paper_hash>/`
+- tries to match AI-analyzed figure labels to the extracted figure crops
+
+### Why this matters
+Users no longer need to jump back to the paper PDF just to see the referenced Figure.
+
+### Current limitation
+Figure extraction is heuristic. It works best when figure captions are clearly detectable and
+the figure appears immediately above its caption. Complex layouts may produce imperfect crops.

@@ -6,3 +6,4 @@ numpy>=1.26
 deep-translator>=1.11.4
 google-genai>=1.0
 pydantic>=2.0
+pymupdf>=1.24.0

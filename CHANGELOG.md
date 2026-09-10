@@ -2,6 +2,25 @@
 
 All notable LALSTUDY updates will be recorded here.
 
+## [0.2.4-beta] - 2026-09-11
+
+### Added
+- Figure in Study: local extraction of study figures from the uploaded PDF
+- `figure_in_study.py` helper module using PyMuPDF
+- Figure crop cache under `figure_cache/study_figures/<paper_hash>/`
+- Figure gallery of extracted study figures inside Learn a Paper
+
+### Changed
+- Figure-by-Figure now shows the actual extracted Figure image together with AI interpretation
+- Figure images are obtained locally and do not require extra AI API calls
+- Added PyMuPDF dependency
+
+### Known limitations
+- Figure extraction is heuristic and may be imperfect for complex journal layouts
+- Matching between extracted crops and AI figure labels is approximate
+
+All notable LALSTUDY updates will be recorded here.
+
 ## [0.2.3-beta] - 2026-09-11
 
 ### Architecture
