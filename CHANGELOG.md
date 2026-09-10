@@ -2,6 +2,16 @@
 
 All notable LALSTUDY updates will be recorded here.
 
+## [0.2.5.3-beta] - 2026-09-11
+
+### Fixed
+- MinerU online API `layout.json` is now recognized as the middle/intermediate layout artifact
+- Supports `*_middle.json`, `middle.json`, `layout.json`, and `*layout.json`
+- Missing-layout errors now list available JSON artifacts for debugging
+- Versioned MinerU session cache to v4
+
+All notable LALSTUDY updates will be recorded here.
+
 ## [0.2.5.2-beta] - 2026-09-11
 
 ### Fixed

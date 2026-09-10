@@ -17,7 +17,7 @@ except Exception:
     fitz = None
 
 
-MINERU_EXTRACTOR_VERSION = "3"
+MINERU_EXTRACTOR_VERSION = "4"
 
 CAPTION_RE = re.compile(
     r"^\s*(?:fig(?:ure)?\.?\s*)(\d+[A-Za-z]?)\s*[.:]?\s*",
@@ -83,16 +83,63 @@ def _text_from_lines(block: Dict) -> str:
 
 
 def _find_middle_json(output_dir: Path) -> Optional[Path]:
-    candidates = list(
-        output_dir.rglob("*middle.json")
-    )
+    """
+    MinerU names this artifact differently depending on the API/client path.
+
+    Official online API packages may expose `layout.json`, which corresponds
+    to the intermediate `middle.json` structure. Local/client-side generation
+    may instead produce `<stem>_middle.json` or `middle.json`.
+    """
+
+    preferred_patterns = [
+        "*_middle.json",
+        "middle.json",
+        "layout.json",
+        "*layout.json",
+    ]
+
+    seen = set()
+    candidates = []
+
+    for pattern in preferred_patterns:
+        for path in output_dir.rglob(pattern):
+            resolved = str(path.resolve())
+
+            if resolved in seen:
+                continue
+
+            seen.add(resolved)
+
+            # Avoid accidentally selecting unrelated tiny metadata JSON files.
+            if path.is_file():
+                candidates.append(path)
 
     if not candidates:
         return None
 
-    # Prefer the largest one if multiple artifacts exist.
+    def score(path: Path):
+        name = path.name.lower()
+
+        if name.endswith("_middle.json"):
+            rank = 4
+        elif name == "middle.json":
+            rank = 3
+        elif name == "layout.json":
+            rank = 2
+        elif name.endswith("layout.json"):
+            rank = 1
+        else:
+            rank = 0
+
+        try:
+            size = path.stat().st_size
+        except Exception:
+            size = 0
+
+        return (rank, size)
+
     candidates.sort(
-        key=lambda p: p.stat().st_size,
+        key=score,
         reverse=True,
     )
 
@@ -311,6 +358,11 @@ def _extract_from_middle_json(
             "",
         )
     ).lower()
+
+    # MinerU online API may serialize the middle structure as layout.json
+    # without the private `_backend` marker.
+    if not backend:
+        backend = "vlm"
 
     pdf_info = middle_json.get(
         "pdf_info",
@@ -685,8 +737,21 @@ def extract_figures_with_mineru(
         )
 
         if middle_path is None:
+            json_files = sorted(
+                str(path.relative_to(output_dir))
+                for path in output_dir.rglob("*.json")
+            )
+
+            preview = ", ".join(
+                json_files[:25]
+            )
+
+            if len(json_files) > 25:
+                preview += ", ..."
+
             raise RuntimeError(
-                "MinerU completed, but middle.json was not found."
+                "MinerU completed, but no middle/layout JSON artifact was found. "
+                f"JSON files present: {preview or 'none'}"
             )
 
         middle_json = json.loads(

@@ -35,7 +35,7 @@ from mineru_figure_extractor import (
     mineru_available,
 )
 
-APP_VERSION = "v0.2.5.2-beta"
+APP_VERSION = "v0.2.5.3-beta"
 METHOD_PROFILE_FILE = Path("method_profiles.json")
 
 st.set_page_config(
@@ -676,7 +676,7 @@ m3.metric(
 mineru_token = get_mineru_token()
 
 mineru_state_key = (
-    "lal_mineru_figures:v3:"
+    "lal_mineru_figures:v4:"
     + active_hash()
 )
 
@@ -1473,8 +1473,8 @@ with tabs[4]:
     st.caption(
         L(
             lang,
-            "v0.2.5.2부터 MinerU의 simplified img_path가 아니라 middle.json의 전체 Figure container 구조를 사용합니다. 실패 시 PyMuPDF fallback도 유지됩니다.",
-            "From v0.2.5.2, Figure extraction uses MinerU middle.json Figure-container geometry instead of the simplified img_path, with PyMuPDF fallback retained.",
+            "v0.2.5.3부터 MinerU의 `*_middle.json`, `middle.json`, `layout.json`을 모두 intermediate layout source로 인식합니다. Figure container geometry를 사용하고 PyMuPDF fallback도 유지됩니다.",
+            "From v0.2.5.3, Figure extraction accepts MinerU `*_middle.json`, `middle.json`, or `layout.json` as the intermediate layout source, with PyMuPDF fallback retained.",
         )
     )
 

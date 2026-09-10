@@ -2,7 +2,7 @@
 
 > Learn a paper, understand the experiment, and keep learning without losing context.
 
-**Current version: `v0.2.5.2-beta`**
+**Current version: `v0.2.5.3-beta`**
 
 LALSTUDY is an experimental scientific-paper learning platform that connects two workflows:
 
@@ -369,3 +369,24 @@ container and renders that full region from the original uploaded PDF.
 
 The Streamlit session cache key is versioned (`v3`) and a Force Re-extract
 button is available so an old panel-only crop cannot be silently reused.
+
+
+## v0.2.5.3 — MinerU layout.json compatibility
+
+MinerU Precision API packages can expose the intermediate layout structure as
+`layout.json` rather than `<stem>_middle.json`.
+
+LALSTUDY now accepts all of:
+
+```text
+*_middle.json
+middle.json
+layout.json
+*layout.json
+```
+
+as the MinerU intermediate layout artifact.
+
+If none are found, the UI error now reports which JSON files were actually
+present in the extracted MinerU result, making future API-format changes easier
+to debug.
