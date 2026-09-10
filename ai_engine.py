@@ -1,9 +1,8 @@
-import hashlib
 import json
 import os
-import time
 import random
-from typing import List, Literal, Optional
+import time
+from typing import List, Literal, Optional, Type
 
 from pydantic import BaseModel, Field
 
@@ -15,49 +14,71 @@ except Exception:
     types = None
 
 
-DEFAULT_MODELS = [
+# Current stable fallback pools.
+TEXT_MODELS = [
     x.strip()
     for x in os.getenv(
-        "LALSTUDY_GEMINI_MODELS",
-        "gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash",
+        "LALSTUDY_TEXT_MODELS",
+        "gemini-3.8-flash,gemini-3.5-flash,gemini-3.5-flash-lite",
     ).split(",")
     if x.strip()
 ]
-DEFAULT_MODEL = DEFAULT_MODELS[0]
+
+FIGURE_MODELS = [
+    x.strip()
+    for x in os.getenv(
+        "LALSTUDY_FIGURE_MODELS",
+        "gemini-3.8-flash,gemini-3.5-flash",
+    ).split(",")
+    if x.strip()
+]
 
 
 # ============================================================
-# STRUCTURED OUTPUT SCHEMA
+# SCHEMAS
 # ============================================================
 
 class LogicStep(BaseModel):
-    order: int = Field(description="Order in the paper's argument.")
-    question: str = Field(description="Scientific question addressed at this step.")
-    experiment_or_analysis: str = Field(description="What the authors did.")
-    observation: str = Field(description="What was directly observed.")
-    inference: str = Field(description="What the authors infer from the observation.")
-    evidence_location: str = Field(
-        description="Figure/panel/section supporting the step, or 'not clearly identifiable'."
-    )
+    order: int
+    question: str
+    experiment_or_analysis: str
+    observation: str
+    inference: str
+    evidence_location: str
+
+
+class PaperOverview(BaseModel):
+    title: str
+    field: str
+    one_sentence_takeaway: str
+    research_question: str
+    why_it_matters: str
+    knowledge_gap: str
+    hypothesis: str
+    novelty: str
+    conclusion: str
+
+
+class CoreAnalysis(BaseModel):
+    overview: PaperOverview
+    logic_map: List[LogicStep] = Field(default_factory=list)
 
 
 class PrerequisiteConcept(BaseModel):
     name: str
     difficulty: Literal["basic", "intermediate", "advanced"]
-    why_needed: str = Field(description="Why this concept is needed to understand this paper.")
-    explanation: str = Field(
-        description="Standalone background explanation using general scientific knowledge."
-    )
-    paper_context: str = Field(
-        description="How the concept is specifically used in this paper."
-    )
+    why_needed: str
+    explanation: str
+    paper_context: str
     prerequisites: List[str] = Field(default_factory=list)
 
 
+class PrerequisiteAnalysis(BaseModel):
+    prerequisites: List[PrerequisiteConcept] = Field(default_factory=list)
+
+
 class ExperimentAnalysis(BaseModel):
-    method: str = Field(
-        description="Conventional scientific method name, preferably canonical English name."
-    )
+    method: str
     scientific_question: str
     sample_or_model: str
     manipulated_variable: str
@@ -66,6 +87,10 @@ class ExperimentAnalysis(BaseModel):
     result_meaning: str
     limitation: str
     evidence_location: str
+
+
+class ExperimentsAnalysis(BaseModel):
+    experiments: List[ExperimentAnalysis] = Field(default_factory=list)
 
 
 class PanelAnalysis(BaseModel):
@@ -87,6 +112,10 @@ class FigureAnalysis(BaseModel):
     what_it_does_not_prove: str
 
 
+class FiguresAnalysis(BaseModel):
+    figures: List[FigureAnalysis] = Field(default_factory=list)
+
+
 class CriticalReading(BaseModel):
     strongest_evidence: str
     weakest_link: str
@@ -103,270 +132,589 @@ class LearningItem(BaseModel):
     action: str
 
 
-class PaperOverview(BaseModel):
-    title: str
-    field: str
-    one_sentence_takeaway: str
-    research_question: str
-    why_it_matters: str
-    knowledge_gap: str
-    hypothesis: str
-    novelty: str
-    conclusion: str
-
-
-class PaperAnalysis(BaseModel):
-    overview: PaperOverview
-    logic_map: List[LogicStep] = Field(default_factory=list)
-    prerequisites: List[PrerequisiteConcept] = Field(default_factory=list)
-    experiments: List[ExperimentAnalysis] = Field(default_factory=list)
-    figures: List[FigureAnalysis] = Field(default_factory=list)
+class CriticalLearningAnalysis(BaseModel):
     critical_reading: CriticalReading
     learning_path: List[LearningItem] = Field(default_factory=list)
 
 
-class BilingualPaperAnalysis(BaseModel):
-    """
-    One PDF analysis contains BOTH display languages.
-    Language switching in the UI therefore never requires another PDF analysis.
-    """
-    ko: PaperAnalysis
-    en: PaperAnalysis
+class BilingualCore(BaseModel):
+    ko: CoreAnalysis
+    en: CoreAnalysis
+
+
+class BilingualPrerequisites(BaseModel):
+    ko: PrerequisiteAnalysis
+    en: PrerequisiteAnalysis
+
+
+class BilingualExperiments(BaseModel):
+    ko: ExperimentsAnalysis
+    en: ExperimentsAnalysis
+
+
+class BilingualFigures(BaseModel):
+    ko: FiguresAnalysis
+    en: FiguresAnalysis
+
+
+class BilingualCriticalLearning(BaseModel):
+    ko: CriticalLearningAnalysis
+    en: CriticalLearningAnalysis
 
 
 # ============================================================
-# PROMPT
+# PROMPT HELPERS
 # ============================================================
 
 DEPTH_INSTRUCTIONS = {
-    "foundation": """
-The learner is new to the field.
-Explain foundational biology explicitly before advanced mechanisms.
-Avoid assuming familiarity with common experimental logic.
-""",
-    "undergraduate": """
-The learner is a life-science undergraduate.
-Assume general molecular/cell biology knowledge, but explain specialized
-pathways, experimental design, omics analyses, and field-specific concepts.
-""",
-    "advanced": """
-The learner is an advanced undergraduate / graduate reader.
-Keep basic explanations concise and emphasize mechanism, causal inference,
-experimental design, statistics, limitations, and interpretation.
-""",
+    "foundation": (
+        "The learner is new to the field. Explain foundational biology before "
+        "advanced mechanisms and do not assume experimental-design familiarity."
+    ),
+    "undergraduate": (
+        "The learner is a life-science undergraduate. Assume general molecular "
+        "and cell biology, but explain field-specific mechanisms, omics, and "
+        "experimental logic."
+    ),
+    "advanced": (
+        "The learner is an advanced undergraduate or graduate reader. Keep basic "
+        "background concise and emphasize mechanism, causal inference, controls, "
+        "statistics, and limitations."
+    ),
 }
 
 
-def build_prompt(depth: str, detected_methods: List[str]) -> str:
-    method_hint = ", ".join(detected_methods[:30]) if detected_methods else "none provided"
+LANGUAGE_RULE = r"""
+Return TWO semantically equivalent versions: `ko` and `en`.
 
-    return f"""
-You are the scientific-learning engine for LALSTUDY.
+`en`: clear scientific English.
 
-Your task is NOT merely to summarize the uploaded paper.
-Reconstruct the paper as a learning system for a reader who wants to understand:
-(1) why the study was necessary,
-(2) the prerequisite knowledge,
-(3) the logic connecting experiments,
-(4) what each experiment and Figure actually establishes,
-(5) what remains uncertain.
+`ko`: natural Korean explanatory prose, BUT use English-first life-science
+terminology. Keep conventional technical nouns in English whenever researchers
+commonly use them in English. Prefer:
+- lysosome의 acidification
+- autophagy flux
+- Flow cytometry로 Treg population을 분석
+- STAT5 phosphorylation
+- single-cell RNA sequencing
+- gene/protein symbols exactly as written
 
-IMPORTANT OUTPUT LANGUAGE RULE
-------------------------------
-Return TWO semantically equivalent versions of the complete analysis:
+Avoid unnecessary Hangul transliterations such as 리소좀, 엔도좀, 오토파지,
+and avoid translating conventional assay names.
 
-- `en`: clear scientific English.
-- `ko`: natural Korean explanatory prose using an ENGLISH-FIRST life-science terminology style.
-
-For `ko`, DO NOT mechanically transliterate or translate specialized biological
-terms into Hangul when researchers commonly use the English term.
-
-Use Korean grammar/connective prose, but preserve technical nouns and phrases
-in English whenever practical, especially:
-- organelles and cellular structures
-- pathways and molecular processes
-- gene/protein names
-- cell types and immune subsets
-- assay / experimental method names
-- omics and bioinformatics terms
-- pharmacology / molecular biology terminology
-
-Preferred Korean-style examples:
-- "lysosome의 acidification이 감소했다"
-- "autophagy flux를 측정했다"
-- "Flow cytometry로 Treg population을 분석했다"
-- "STAT5 phosphorylation이 증가했다"
-- "single-cell RNA sequencing으로 cell state를 구분했다"
-
-Avoid forms such as:
-- "리소좀" when `lysosome` is appropriate
-- "엔도좀" when `endosome` is appropriate
-- "오토파지" when `autophagy` is appropriate
-- unnecessarily translating standard method names
-
-When a technical term appears in the PDF, preferentially preserve its original
-English spelling/capitalization in the Korean version.
-
-The Korean and English versions MUST represent the same scientific interpretation.
-Do not independently invent different claims between languages.
-
-Learner depth:
-{DEPTH_INSTRUCTIONS.get(depth, DEPTH_INSTRUCTIONS["undergraduate"])}
-
-LALSTUDY's rule-based detector independently found these possible methods:
-{method_hint}
-
-Treat this only as a hint. Verify methods against the PDF itself.
-Do not force a method into the analysis if the PDF does not support it.
-
-STRICT GROUNDING RULES
-----------------------
-1. Every statement about THIS study's question, design, results, sample,
-   statistics, Figures, claims, or limitations must be grounded in the PDF.
-2. General scientific background may use established background knowledge,
-   but keep it clearly separated in the prerequisite explanation fields.
-3. Never invent a sample size, p-value, method, panel, mechanism, or result.
-4. Distinguish direct OBSERVATION from author INTERPRETATION.
-5. If evidence is unclear or unavailable, explicitly say so rather than guessing.
-6. Figure and panel labels must only be used when you can identify them from the PDF.
-7. "What it proves" should be conservative. Association is not causation.
-8. "What it does not prove" should identify the key inference boundary.
-9. For experiments, explain WHY the chosen method answers the scientific question,
-   not merely what the method generally does.
-10. Prefer conventional English method names so they can link to LALSTUDY ontology.
-
-OUTPUT GOAL
------------
-For BOTH `ko` and `en`, build:
-- a compact paper overview,
-- a causal/argument logic map,
-- prerequisite concepts with dependency relationships,
-- the main experimental strategy,
-- Figure-by-Figure interpretation,
-- a critical-reading section,
-- an ordered learning path.
-
-For the logic map:
-Background → Gap → Question/Hypothesis → Experiment → Observation → Inference → Next question → Conclusion.
-
-For each Figure:
-WHAT question is asked?
-HOW is it tested?
-WHAT is directly observed?
-WHY does that matter?
-WHAT does it support?
-WHAT does it NOT establish?
-
-Do not include references merely cited by the paper as if they were findings of this study.
+The Korean and English versions must contain the SAME scientific interpretation.
 """
 
 
-# ============================================================
-# GEMINI
-# ============================================================
+GROUNDING_RULE = r"""
+GROUNDING RULES
+1. Claims about this study must come from the provided paper content.
+2. General background knowledge is allowed only where the task explicitly asks
+   for teaching/background.
+3. Never invent sample sizes, statistics, panels, experiments, mechanisms, or results.
+4. Separate direct observation from interpretation.
+5. If evidence is unclear, say so.
+6. Association is not causation.
+7. Preserve conventional English method names for LALSTUDY ontology linking.
+"""
 
-def sdk_available() -> bool:
+
+def sdk_available():
     return genai is not None and types is not None
 
 
-def make_cache_key(
-    pdf_bytes: bytes,
-    language: str,
-    depth: str,
-    model: str,
-) -> str:
-    digest = hashlib.sha256(pdf_bytes).hexdigest()
-    return f"{digest}:bilingual:{depth}:{model}"
+def compact_text(text: str, max_chars: int = 150_000) -> str:
+    """
+    Reduce unnecessary payload while keeping both beginning and later Results /
+    Discussion content. References are removed when a clear heading is found.
+    """
+    text = (text or "").strip()
 
+    ref_match = re_search_references(text)
+    if ref_match is not None:
+        text = text[:ref_match]
 
-def _transient(exc):
-    s = str(exc).lower()
-    return any(x in s for x in [
-        "429","rate limit","resource_exhausted","500","502","503","504",
-        "unavailable","high demand","timeout","deadline","internal",
-        "bad gateway","gateway timeout"
-    ])
+    if len(text) <= max_chars:
+        return text
 
-def _model_bad(exc):
-    s = str(exc).lower()
-    return "404" in s or "not_found" in s or ("model" in s and "not available" in s)
+    head = int(max_chars * 0.68)
+    tail = max_chars - head
 
-def analyze_pdf(
-    pdf_bytes: bytes,
-    api_key: str,
-    language: str = "ko",
-    depth: str = "undergraduate",
-    detected_methods: Optional[List[str]] = None,
-    model: Optional[str] = None,
-) -> BilingualPaperAnalysis:
-    if not sdk_available():
-        raise RuntimeError("google-genai is not installed.")
-    if not api_key:
-        raise ValueError("Server GEMINI_API_KEY is not configured.")
-    if len(pdf_bytes) > 50 * 1024 * 1024:
-        raise ValueError("This beta supports PDFs up to 50 MB.")
-
-    client = genai.Client(api_key=api_key)
-    prompt = build_prompt(
-        depth=depth,
-        detected_methods=detected_methods or [],
+    return (
+        text[:head]
+        + "\n\n[... middle of paper omitted for request size ...]\n\n"
+        + text[-tail:]
     )
 
-    models = []
-    if model:
-        models.append(model)
-    for m in DEFAULT_MODELS:
-        if m not in models:
-            models.append(m)
+
+def re_search_references(text: str):
+    import re
+
+    matches = list(
+        re.finditer(
+            r"(?im)^\s*(references|bibliography)\s*$",
+            text,
+        )
+    )
+
+    if not matches:
+        return None
+
+    # Prefer a late References heading, avoiding inline mentions.
+    late = [
+        m.start()
+        for m in matches
+        if m.start() > len(text) * 0.55
+    ]
+
+    return late[0] if late else None
+
+
+def _is_transient(exc: Exception) -> bool:
+    s = str(exc).lower()
+
+    return any(
+        marker in s
+        for marker in [
+            "429",
+            "resource_exhausted",
+            "rate limit",
+            "500",
+            "502",
+            "503",
+            "504",
+            "unavailable",
+            "high demand",
+            "temporarily",
+            "timeout",
+            "deadline",
+            "internal",
+            "bad gateway",
+            "gateway timeout",
+        ]
+    )
+
+
+def _is_model_unavailable(exc: Exception) -> bool:
+    s = str(exc).lower()
+
+    return (
+        "404" in s
+        or "not_found" in s
+        or (
+            "model" in s
+            and "not available" in s
+        )
+    )
+
+
+class StageCallError(RuntimeError):
+    def __init__(self, stage: str, trace: List[str]):
+        self.stage = stage
+        self.trace = trace
+
+        super().__init__(
+            f"{stage} analysis could not be completed after retry/fallback."
+        )
+
+
+def _call_structured(
+    *,
+    api_key: str,
+    stage: str,
+    prompt: str,
+    schema: Type[BaseModel],
+    model_pool: List[str],
+    pdf_bytes: Optional[bytes] = None,
+    thinking_level: str = "low",
+):
+    if not sdk_available():
+        raise RuntimeError("google-genai is not installed.")
+
+    if not api_key:
+        raise ValueError("Server GEMINI_API_KEY is not configured.")
+
+    client = genai.Client(api_key=api_key)
+
+    if pdf_bytes is not None:
+        contents = [
+            types.Part.from_bytes(
+                data=pdf_bytes,
+                mime_type="application/pdf",
+            ),
+            prompt,
+        ]
+    else:
+        contents = prompt
 
     errors = []
 
-    for model_name in models:
-        for attempt in range(3):
+    # Two tries per model: enough for transient spikes without making the user
+    # wait through a long wall of retries.
+    for model_name in model_pool:
+        for attempt in range(2):
             try:
                 response = client.models.generate_content(
                     model=model_name,
-                    contents=[
-                        types.Part.from_bytes(
-                            data=pdf_bytes,
-                            mime_type="application/pdf",
-                        ),
-                        prompt,
-                    ],
+                    contents=contents,
                     config=types.GenerateContentConfig(
+                        temperature=0.1,
                         response_mime_type="application/json",
-                        response_schema=BilingualPaperAnalysis,
+                        response_schema=schema,
+                        thinking_config=types.ThinkingConfig(
+                            thinking_level=thinking_level
+                        ),
                     ),
                 )
 
-                if getattr(response, "parsed", None) is not None:
-                    parsed = response.parsed
-                    if isinstance(parsed, BilingualPaperAnalysis):
-                        return parsed
-                    return BilingualPaperAnalysis.model_validate(parsed)
+                parsed = getattr(
+                    response,
+                    "parsed",
+                    None,
+                )
 
-                body = getattr(response, "text", None)
-                if not body:
-                    raise RuntimeError(f"{model_name} returned no text.")
+                if parsed is not None:
+                    if isinstance(parsed, schema):
+                        return parsed, model_name
 
-                return BilingualPaperAnalysis.model_validate_json(body)
-
-            except Exception as exc:
-                errors.append(f"{model_name} attempt {attempt + 1}: {exc}")
-
-                if _model_bad(exc):
-                    break
-
-                if not _transient(exc):
-                    break
-
-                if attempt < 2:
-                    time.sleep(
-                        1.5 * (2 ** attempt)
-                        + random.uniform(0, 0.8)
+                    return (
+                        schema.model_validate(parsed),
+                        model_name,
                     )
 
-    raise RuntimeError(
-        "All configured Gemini models failed. "
-        + " | ".join(errors[-4:])
+                body = getattr(
+                    response,
+                    "text",
+                    None,
+                )
+
+                if not body:
+                    raise RuntimeError(
+                        f"{model_name} returned no text."
+                    )
+
+                return (
+                    schema.model_validate_json(body),
+                    model_name,
+                )
+
+            except Exception as exc:
+                errors.append(
+                    f"{model_name} attempt {attempt + 1}: {exc}"
+                )
+
+                if _is_model_unavailable(exc):
+                    break
+
+                if not _is_transient(exc):
+                    break
+
+                if attempt == 0:
+                    time.sleep(
+                        1.2
+                        + random.uniform(0.0, 0.6)
+                    )
+
+    raise StageCallError(
+        stage=stage,
+        trace=errors,
+    )
+
+
+def _core_context(core_bundle: dict) -> str:
+    if not core_bundle:
+        return "{}"
+
+    # English copy is enough as grounding context for later stages.
+    source = core_bundle.get(
+        "en",
+        core_bundle,
+    )
+
+    return json.dumps(
+        source,
+        ensure_ascii=False,
+        indent=2,
+    )[:30_000]
+
+
+# ============================================================
+# STAGE 1: CORE
+# ============================================================
+
+def analyze_core(
+    *,
+    paper_text: str,
+    api_key: str,
+    depth: str,
+    detected_methods: List[str],
+):
+    prompt = f"""
+You are LALSTUDY's Stage 1 scientific-reading engine.
+
+{LANGUAGE_RULE}
+{GROUNDING_RULE}
+
+Learner level:
+{DEPTH_INSTRUCTIONS.get(depth, DEPTH_INSTRUCTIONS["undergraduate"])}
+
+Possible methods detected by a separate rule-based system:
+{", ".join(detected_methods[:25]) if detected_methods else "none"}
+Use them only as hints.
+
+TASK
+Create ONLY:
+1. Paper overview
+2. A concise logic map of the major argument
+
+Keep the logic map to roughly 5-10 major steps.
+Do NOT generate detailed prerequisite lessons, exhaustive experiment cards,
+Figure panel analysis, or reviewer critique yet.
+
+For the logic map, emphasize:
+Question → experiment/analysis → direct observation → inference → next question.
+
+PAPER TEXT
+==========
+{compact_text(paper_text, 135_000)}
+"""
+
+    return _call_structured(
+        api_key=api_key,
+        stage="core",
+        prompt=prompt,
+        schema=BilingualCore,
+        model_pool=TEXT_MODELS,
+        thinking_level="low",
+    )
+
+
+# ============================================================
+# STAGE 2: PREREQUISITES
+# ============================================================
+
+def analyze_prerequisites(
+    *,
+    paper_text: str,
+    core_bundle: dict,
+    api_key: str,
+    depth: str,
+):
+    prompt = f"""
+You are LALSTUDY's prerequisite-learning module.
+
+{LANGUAGE_RULE}
+{GROUNDING_RULE}
+
+Learner level:
+{DEPTH_INSTRUCTIONS.get(depth, DEPTH_INSTRUCTIONS["undergraduate"])}
+
+CORE ANALYSIS
+=============
+{_core_context(core_bundle)}
+
+TASK
+Identify approximately 6-12 prerequisite concepts that would most reduce the
+reader's difficulty understanding THIS paper.
+
+For each concept:
+- why it is needed for this paper,
+- a standalone scientific explanation,
+- how it appears in this paper,
+- what should be learned first.
+
+Do not create a generic glossary. Prefer concepts that are central to the paper's
+mechanism, model system, or analysis.
+
+PAPER TEXT
+==========
+{compact_text(paper_text, 100_000)}
+"""
+
+    return _call_structured(
+        api_key=api_key,
+        stage="prerequisites",
+        prompt=prompt,
+        schema=BilingualPrerequisites,
+        model_pool=TEXT_MODELS,
+        thinking_level="low",
+    )
+
+
+# ============================================================
+# STAGE 3: EXPERIMENTS
+# ============================================================
+
+def analyze_experiments(
+    *,
+    paper_text: str,
+    core_bundle: dict,
+    api_key: str,
+    detected_methods: List[str],
+):
+    prompt = f"""
+You are LALSTUDY's experimental-strategy module.
+
+{LANGUAGE_RULE}
+{GROUNDING_RULE}
+
+CORE ANALYSIS
+=============
+{_core_context(core_bundle)}
+
+Ontology hints:
+{", ".join(detected_methods[:30]) if detected_methods else "none"}
+
+TASK
+Select the paper's major experiments / analyses, not every procedural detail.
+For each, explain:
+- scientific question
+- sample/model
+- manipulated variable or comparison
+- readout
+- WHY this method answers the question
+- what the result supports
+- key limitation
+- evidence location
+
+Aim for roughly 5-12 high-value experiment cards.
+Use conventional English method names whenever possible.
+
+PAPER TEXT
+==========
+{compact_text(paper_text, 125_000)}
+"""
+
+    return _call_structured(
+        api_key=api_key,
+        stage="experiments",
+        prompt=prompt,
+        schema=BilingualExperiments,
+        model_pool=TEXT_MODELS,
+        thinking_level="low",
+    )
+
+
+# ============================================================
+# STAGE 4: FIGURES — PDF ONLY WHEN REQUESTED
+# ============================================================
+
+def analyze_figures(
+    *,
+    pdf_bytes: bytes,
+    core_bundle: dict,
+    api_key: str,
+):
+    if len(pdf_bytes) > 50 * 1024 * 1024:
+        raise ValueError(
+            "Figure analysis currently supports PDFs up to 50 MB."
+        )
+
+    prompt = f"""
+You are LALSTUDY's Figure-reading module.
+
+{LANGUAGE_RULE}
+{GROUNDING_RULE}
+
+CORE ANALYSIS
+=============
+{_core_context(core_bundle)}
+
+TASK
+Inspect the uploaded PDF and reconstruct the MAIN scientific Figures.
+Do not analyze supplementary Figures unless essential.
+
+For each Figure:
+- role in the paper's story
+- main scientific question
+- panel-by-panel WHAT / HOW / RESULT / INTERPRETATION when labels are clear
+- methods used
+- overall takeaway
+- what the Figure supports
+- what it does NOT establish
+
+Be conservative with panel labels. If a panel cannot be identified reliably,
+do not invent it.
+
+Keep the output focused rather than exhaustive.
+"""
+
+    return _call_structured(
+        api_key=api_key,
+        stage="figures",
+        prompt=prompt,
+        schema=BilingualFigures,
+        model_pool=FIGURE_MODELS,
+        pdf_bytes=pdf_bytes,
+        thinking_level="low",
+    )
+
+
+# ============================================================
+# STAGE 5: CRITICAL READING + LEARNING PATH
+# ============================================================
+
+def analyze_critical_learning(
+    *,
+    paper_text: str,
+    core_bundle: dict,
+    experiments_bundle: Optional[dict],
+    api_key: str,
+    depth: str,
+):
+    exp_context = (
+        json.dumps(
+            (
+                experiments_bundle.get("en", experiments_bundle)
+                if experiments_bundle
+                else {}
+            ),
+            ensure_ascii=False,
+            indent=2,
+        )[:25_000]
+    )
+
+    prompt = f"""
+You are LALSTUDY's critical-reading and learning-planning module.
+
+{LANGUAGE_RULE}
+{GROUNDING_RULE}
+
+Learner level:
+{DEPTH_INSTRUCTIONS.get(depth, DEPTH_INSTRUCTIONS["undergraduate"])}
+
+CORE ANALYSIS
+=============
+{_core_context(core_bundle)}
+
+EXPERIMENT ANALYSIS IF AVAILABLE
+================================
+{exp_context}
+
+TASK A — Critical reading
+Identify:
+- strongest evidence
+- weakest inferential link
+- plausible alternative explanations
+- one especially informative missing control / experiment
+- limitations explicitly stated by the authors
+- reviewer-style questions
+
+TASK B — Learning path
+Create an ordered short plan for what this reader should learn/review before
+reading the paper again. Prioritize concepts or methods that unlock multiple
+parts of the paper.
+
+PAPER TEXT
+==========
+{compact_text(paper_text, 105_000)}
+"""
+
+    return _call_structured(
+        api_key=api_key,
+        stage="critical_learning",
+        prompt=prompt,
+        schema=BilingualCriticalLearning,
+        model_pool=TEXT_MODELS,
+        thinking_level="low",
     )

@@ -12,16 +12,19 @@ import streamlit as st
 from pypdf import PdfReader
 
 from i18n import language_selector, L
-from translator import translate_text
 from ai_engine import (
-    analyze_pdf,
-    make_cache_key,
+    analyze_core,
+    analyze_prerequisites,
+    analyze_experiments,
+    analyze_figures,
+    analyze_critical_learning,
+    StageCallError,
     sdk_available,
-    DEFAULT_MODEL,
-    DEFAULT_MODELS,
+    TEXT_MODELS,
+    FIGURE_MODELS,
 )
 
-APP_VERSION = "v0.2.2-beta"
+APP_VERSION = "v0.2.3-beta"
 METHOD_PROFILE_FILE = Path("method_profiles.json")
 
 st.set_page_config(
@@ -32,7 +35,7 @@ st.set_page_config(
 
 
 # ============================================================
-# DATA / RULE-BASED FALLBACK
+# LOCAL DATA / PDF
 # ============================================================
 
 def clean_text(text):
@@ -46,12 +49,16 @@ def clean_text(text):
 def load_profiles():
     if not METHOD_PROFILE_FILE.exists():
         return []
+
     return json.loads(
-        METHOD_PROFILE_FILE.read_text(encoding="utf-8")
+        METHOD_PROFILE_FILE.read_text(
+            encoding="utf-8"
+        )
     )
 
 
 profiles = load_profiles()
+
 profiles_by_name = {
     p["name"]: p
     for p in profiles
@@ -71,6 +78,7 @@ for profile in profiles:
         method_terms.append(
             (term, canonical)
         )
+
         method_alias_index[
             term.lower().strip()
         ] = canonical
@@ -107,26 +115,38 @@ def canonical_method_match(name):
     query = name.lower().strip()
 
     if query in method_alias_index:
-        return method_alias_index[query]
+        return method_alias_index[
+            query
+        ]
 
-    # Containment match.
-    containment = []
+    candidates = []
 
-    for alias, canonical in method_alias_index.items():
-        if query in alias or alias in query:
-            containment.append(
-                (len(alias), canonical)
+    for alias, canonical in (
+        method_alias_index.items()
+    ):
+        if (
+            query in alias
+            or alias in query
+        ):
+            candidates.append(
+                (
+                    len(alias),
+                    canonical,
+                )
             )
 
-    if containment:
-        containment.sort(reverse=True)
-        return containment[0][1]
+    if candidates:
+        candidates.sort(
+            reverse=True
+        )
+        return candidates[0][1]
 
-    # Conservative fuzzy fallback.
     best = None
     best_score = 0.0
 
-    for alias, canonical in method_alias_index.items():
+    for alias, canonical in (
+        method_alias_index.items()
+    ):
         score = SequenceMatcher(
             None,
             query,
@@ -137,10 +157,11 @@ def canonical_method_match(name):
             best_score = score
             best = canonical
 
-    if best_score >= 0.82:
-        return best
-
-    return None
+    return (
+        best
+        if best_score >= 0.82
+        else None
+    )
 
 
 @st.cache_data(show_spinner=False)
@@ -151,9 +172,14 @@ def extract_pdf_text(file_bytes):
 
     pages = []
 
-    for i, page in enumerate(reader.pages):
+    for i, page in enumerate(
+        reader.pages
+    ):
         try:
-            text = page.extract_text() or ""
+            text = (
+                page.extract_text()
+                or ""
+            )
         except Exception:
             text = ""
 
@@ -164,48 +190,182 @@ def extract_pdf_text(file_bytes):
             }
         )
 
-    full = "\n".join(
-        x["text"] for x in pages
+    return (
+        pages,
+        "\n".join(
+            x["text"]
+            for x in pages
+        ),
     )
 
-    return pages, full
 
-
-def get_secret_key():
-    """
-    Server-side only.
-    Public users never enter or receive the Gemini API key.
-    """
+def get_server_key():
     try:
         if "GEMINI_API_KEY" in st.secrets:
-            value = str(st.secrets["GEMINI_API_KEY"]).strip()
+            value = str(
+                st.secrets[
+                    "GEMINI_API_KEY"
+                ]
+            ).strip()
+
             if value:
-                return value, "secret"
+                return value
     except Exception:
         pass
 
-    value = os.getenv("GEMINI_API_KEY", "").strip()
-    if value:
-        return value, "environment"
+    return os.getenv(
+        "GEMINI_API_KEY",
+        "",
+    ).strip()
 
-    return "", None
+
+# ============================================================
+# STATE
+# ============================================================
+
+def active_hash():
+    return st.session_state.get(
+        "lalstudy_active_paper_hash",
+        "",
+    )
+
+
+def stage_key(stage, depth):
+    return (
+        f"lal_v023:{active_hash()}:"
+        f"{depth}:{stage}"
+    )
+
+
+def get_stage(stage, depth):
+    return st.session_state.get(
+        stage_key(stage, depth)
+    )
+
+
+def set_stage(
+    stage,
+    depth,
+    result,
+    model,
+):
+    st.session_state[
+        stage_key(stage, depth)
+    ] = {
+        "data": result.model_dump(),
+        "model": model,
+    }
+
+
+def clear_current_paper():
+    current_hash = active_hash()
+
+    for key in list(
+        st.session_state.keys()
+    ):
+        if (
+            str(key).startswith(
+                "lalstudy_active_paper_"
+            )
+            or str(key).startswith(
+                f"lal_v023:{current_hash}:"
+            )
+        ):
+            del st.session_state[key]
 
 
 # ============================================================
 # UI HELPERS
 # ============================================================
 
-def difficulty_label(value, lang):
-    labels = {
-        "basic": L(lang, "기초", "Basic"),
-        "intermediate": L(lang, "중급", "Intermediate"),
-        "advanced": L(lang, "심화", "Advanced"),
+def selected_language_data(
+    stage_record
+):
+    if not stage_record:
+        return None
+
+    data = stage_record.get(
+        "data",
+        {}
+    )
+
+    if (
+        isinstance(data, dict)
+        and lang in data
+    ):
+        return data[lang]
+
+    return data
+
+
+def difficulty_label(value):
+    mapping = {
+        "basic": L(
+            lang,
+            "기초",
+            "Basic",
+        ),
+        "intermediate": L(
+            lang,
+            "중급",
+            "Intermediate",
+        ),
+        "advanced": L(
+            lang,
+            "심화",
+            "Advanced",
+        ),
     }
 
-    return labels.get(value, value)
+    return mapping.get(
+        value,
+        value,
+    )
 
 
-def method_jump_button(method_name, key, target="method"):
+def model_badge(record):
+    if record:
+        st.caption(
+            f"AI: {record.get('model','')}"
+        )
+
+
+def show_stage_error(
+    title,
+    exc,
+):
+    st.error(
+        L(
+            lang,
+            f"{title} 생성에 실패했습니다. 이미 생성된 다른 결과는 그대로 유지됩니다.",
+            f"{title} generation failed. Previously generated sections are preserved.",
+        )
+    )
+
+    if isinstance(
+        exc,
+        StageCallError,
+    ):
+        with st.expander(
+            L(
+                lang,
+                "기술 정보",
+                "Technical details",
+            )
+        ):
+            for line in (
+                exc.trace[-6:]
+            ):
+                st.code(line)
+    else:
+        st.caption(str(exc))
+
+
+def method_jump_button(
+    method_name,
+    key,
+    target="method",
+):
     canonical = canonical_method_match(
         method_name
     )
@@ -215,7 +375,11 @@ def method_jump_button(method_name, key, target="method"):
 
     label = (
         f"🧬 {canonical} "
-        + L(lang, "사례 보기", "examples")
+        + L(
+            lang,
+            "사례 보기",
+            "examples",
+        )
     )
 
     if st.button(
@@ -239,7 +403,7 @@ def method_jump_button(method_name, key, target="method"):
 
 def logic_arrow():
     st.markdown(
-        "<div style='text-align:center;font-size:1.4rem;opacity:.55'>↓</div>",
+        "<div style='text-align:center;font-size:1.35rem;opacity:.5'>↓</div>",
         unsafe_allow_html=True,
     )
 
@@ -254,13 +418,29 @@ st.sidebar.title("LALSTUDY")
 st.sidebar.caption(APP_VERSION)
 
 depth_options = {
-    L(lang, "기초부터 자세히", "Foundation"): "foundation",
-    L(lang, "생명과학 학부 수준", "Life-science undergraduate"): "undergraduate",
-    L(lang, "심화 / 대학원 수준", "Advanced / graduate"): "advanced",
+    L(
+        lang,
+        "기초부터 자세히",
+        "Foundation",
+    ): "foundation",
+    L(
+        lang,
+        "생명과학 학부 수준",
+        "Life-science undergraduate",
+    ): "undergraduate",
+    L(
+        lang,
+        "심화 / 대학원 수준",
+        "Advanced / graduate",
+    ): "advanced",
 }
 
 depth_label = st.sidebar.selectbox(
-    L(lang, "설명 깊이", "Explanation depth"),
+    L(
+        lang,
+        "설명 깊이",
+        "Explanation depth",
+    ),
     list(depth_options.keys()),
     index=1,
 )
@@ -269,41 +449,49 @@ depth = depth_options[
     depth_label
 ]
 
-st.sidebar.caption(
-    L(
-        lang,
-        "같은 논문이라도 선택한 수준에 따라 선수지식 설명 깊이가 달라집니다.",
-        "Prerequisite explanations adapt to the selected learning level.",
-    )
-)
-
 if lang == "ko":
     st.sidebar.caption(
-        "🧬 용어 스타일: Korean prose + English scientific terms"
+        "🧬 Korean prose + English scientific terminology"
     )
 
-existing_key, key_source = get_secret_key()
+server_key = get_server_key()
 
-if existing_key:
-    st.sidebar.success(L(lang, "✨ AI service ready", "✨ AI service ready"))
+if server_key:
+    st.sidebar.success(
+        "✨ AI service ready"
+    )
 else:
-    st.sidebar.error(L(lang, "관리자 API key 미설정", "Server API key missing"))
+    st.sidebar.error(
+        L(
+            lang,
+            "관리자 API key 미설정",
+            "Server API key missing",
+        )
+    )
 
-st.sidebar.caption("AI model: automatic fallback")
-st.sidebar.caption(" → ".join(DEFAULT_MODELS))
+st.sidebar.caption(
+    "Text: "
+    + " → ".join(TEXT_MODELS)
+)
+st.sidebar.caption(
+    "Figure: "
+    + " → ".join(FIGURE_MODELS)
+)
 
 
 # ============================================================
-# PAGE
+# ACTIVE PAPER
 # ============================================================
 
-st.title("📄 Learn a Paper · AI Deep Study")
+st.title(
+    "📄 Learn a Paper · Staged Deep Study"
+)
 
 st.caption(
     L(
         lang,
-        "요약이 아니라 논문의 논리·배경지식·실험·Figure를 하나의 학습 경로로 재구성합니다.",
-        "More than a summary: reconstruct the paper's logic, prerequisites, experiments, and Figures as a learning path.",
+        "먼저 논문의 핵심 논리만 빠르게 분석하고, 필요한 학습 모듈만 추가로 생성합니다.",
+        "Start with a lightweight core analysis, then generate only the deeper modules you need.",
     )
 )
 
@@ -317,35 +505,14 @@ uploaded = st.file_uploader(
     key="lalstudy_pdf_uploader",
 )
 
-# ------------------------------------------------------------
-# ACTIVE PAPER STATE
-# ------------------------------------------------------------
-# A FileUploader widget belongs to this page and may disappear when the user
-# navigates away. Store the actual bytes under non-widget session keys so the
-# active paper survives navigation across the whole multipage app.
-
 if uploaded is not None:
     new_bytes = uploaded.getvalue()
+
     new_hash = hashlib.sha256(
         new_bytes
     ).hexdigest()
 
-    old_hash = st.session_state.get(
-        "lalstudy_active_paper_hash"
-    )
-
-    if new_hash != old_hash:
-        # A genuinely new paper replaces the current active paper.
-        # Clear old AI analysis bundles while preserving API key/preferences.
-        for state_key in list(
-            st.session_state.keys()
-        ):
-            if str(state_key).startswith(
-                "lal_ai_result:"
-            ):
-                del st.session_state[
-                    state_key
-                ]
+    old_hash = active_hash()
 
     st.session_state[
         "lalstudy_active_paper_bytes"
@@ -359,6 +526,9 @@ if uploaded is not None:
         "lalstudy_active_paper_hash"
     ] = new_hash
 
+    # We deliberately do not delete the previous paper's stage cache here.
+    # If the user uploads that same paper again in the same session, its
+    # generated modules can be reused by hash.
 
 pdf_bytes = st.session_state.get(
     "lalstudy_active_paper_bytes"
@@ -369,48 +539,23 @@ paper_name = st.session_state.get(
     "",
 )
 
-
 if not pdf_bytes:
     st.info(
         L(
             lang,
-            "PDF를 올리면 AI Deep Study가 논문 전체를 학습용 구조로 재구성합니다.",
-            "Upload a PDF and AI Deep Study will reconstruct the paper as a structured learning experience.",
+            "PDF를 올리면 먼저 Core Analysis를 생성합니다.",
+            "Upload a PDF to begin with Core Analysis.",
         )
     )
 
-    st.markdown(
-        L(
-            lang,
-            """
-### v0.2.1-beta
-
-**AI Deep Study**
-- 연구 질문 / knowledge gap / hypothesis
-- 논문의 전체 논리 지도
-- 선수지식 dependency
-- 각 실험의 **왜 이 방법을 썼는가**
-- Figure별 **What / How / Why / What it proves**
-- 논문의 약한 고리와 추가실험
-- 개인 수준에 맞춘 다음 학습 순서
-
-한 번 업로드한 PDF와 분석 결과는 페이지를 이동해도 현재 session에 유지됩니다.
-""",
-            """
-### v0.2.1-beta
-
-**AI Deep Study**
-- Research question / knowledge gap / hypothesis
-- Whole-paper logic map
-- Prerequisite dependencies
-- Why each experimental method was chosen
-- Figure-by-Figure **What / How / Why / What it proves**
-- Critical reading and missing experiments
-- Level-adapted learning path
-
-The active PDF and its analysis stay available while you navigate between pages in the current session.
-""",
-        )
+    st.code(
+        """PDF
+↓
+Core: Overview + Logic Map
+↓
+Prerequisites / Experiments / Figures / Critical Reading
+(필요한 모듈만 생성)""",
+        language=None,
     )
 
     st.stop()
@@ -419,17 +564,17 @@ The active PDF and its analysis stay available while you navigate between pages 
 with st.container(
     border=True
 ):
-    c_paper, c_clear = st.columns(
+    c1, c2 = st.columns(
         [5, 1]
     )
 
-    with c_paper:
+    with c1:
         st.markdown(
             f"**{L(lang,'📌 현재 논문','📌 Active paper')}**  \n"
             f"{paper_name}"
         )
 
-    with c_clear:
+    with c2:
         if st.button(
             L(
                 lang,
@@ -437,43 +582,30 @@ with st.container(
                 "Clear paper",
             ),
             use_container_width=True,
-            key="lalstudy_clear_active_paper",
         ):
-            for state_key in list(
-                st.session_state.keys()
-            ):
-                if (
-                    str(state_key).startswith(
-                        "lalstudy_active_paper_"
-                    )
-                    or str(state_key).startswith(
-                        "lal_ai_result:"
-                    )
-                ):
-                    del st.session_state[
-                        state_key
-                    ]
-
+            clear_current_paper()
             st.rerun()
 
 
 with st.spinner(
     L(
         lang,
-        "PDF 기본 구조를 읽는 중...",
-        "Reading PDF structure...",
+        "PDF text layer 확인 중...",
+        "Reading PDF text layer...",
     )
 ):
-    pages, raw_text = extract_pdf_text(
-        pdf_bytes
+    pages, raw_text = (
+        extract_pdf_text(
+            pdf_bytes
+        )
     )
 
-full_text = clean_text(
+paper_text = clean_text(
     raw_text
 )
 
 rule_methods = detect_methods(
-    full_text
+    paper_text
 )
 
 m1, m2, m3 = st.columns(3)
@@ -486,8 +618,8 @@ m1.metric(
 m2.metric(
     L(
         lang,
-        "ontology 감지 method",
-        "Ontology methods",
+        "감지 method",
+        "Detected methods",
     ),
     len(rule_methods),
 )
@@ -501,369 +633,511 @@ m3.metric(
     f"{len(pdf_bytes)/(1024*1024):.1f} MB",
 )
 
+if len(paper_text) < 500:
+    st.warning(
+        L(
+            lang,
+            "PDF text layer가 매우 적습니다. Figure 단계는 PDF 자체를 읽지만, 다른 단계의 품질은 낮아질 수 있습니다.",
+            "The PDF has little extractable text. Figure analysis reads the PDF directly, but text-based stages may be weaker.",
+        )
+    )
+
 
 # ============================================================
-# AI CONTROL
+# CORE
 # ============================================================
+
+core_record = get_stage(
+    "core",
+    depth,
+)
 
 st.divider()
 
-st.subheader(
-    L(lang, "✨ AI Deep Study", "✨ AI Deep Study")
-)
-
-st.write(
-    L(
-        lang,
-        "PDF 전체를 읽고 **연구 질문 → 논리 지도 → 선수지식 → 실험 전략 → Figure 해석 → 비판적 읽기** 순서로 학습 자료를 생성합니다.",
-        "Reads the full PDF and builds **research question → logic map → prerequisites → experiments → Figures → critical reading**.",
+if not core_record:
+    st.subheader(
+        L(
+            lang,
+            "1️⃣ Core Analysis",
+            "1️⃣ Core Analysis",
+        )
     )
-)
 
-with st.expander(
-    L(lang, "AI 사용 안내", "AI usage note")
-):
     st.write(
         L(
             lang,
-            "업로드한 PDF는 Gemini API로 전송됩니다. LALSTUDY 서버의 API key를 사용하므로 사용자는 key를 입력할 필요가 없습니다. 공개 논문 사용을 권장합니다.",
-            "The PDF is sent to the Gemini API. LALSTUDY uses a server-side key, so users do not need their own key. Public papers are recommended.",
+            "처음에는 **한눈에 보기 + 논리 지도**만 생성합니다. 이전처럼 모든 분석을 한 요청에 몰아넣지 않습니다.",
+            "The first request generates only the **overview + logic map** instead of forcing every analysis into one giant request.",
         )
     )
 
-if not existing_key:
-    st.error(
+    can_run = bool(
+        server_key
+        and sdk_available()
+        and len(paper_text) >= 200
+    )
+
+    if not server_key:
+        st.error(
+            L(
+                lang,
+                "서버 Gemini API key가 설정되지 않았습니다.",
+                "Server Gemini API key is not configured.",
+            )
+        )
+
+    if st.button(
         L(
             lang,
-            "서버 Gemini API key가 설정되지 않았습니다.",
-            "Server Gemini API key is not configured.",
-        )
-    )
+            "✨ Core Analysis 시작",
+            "✨ Start Core Analysis",
+        ),
+        type="primary",
+        use_container_width=True,
+        disabled=not can_run,
+    ):
+        with st.spinner(
+            L(
+                lang,
+                "논문의 핵심 질문과 논리 흐름을 분석 중...",
+                "Analyzing the paper's core question and logic...",
+            )
+        ):
+            try:
+                result, model = analyze_core(
+                    paper_text=paper_text,
+                    api_key=server_key,
+                    depth=depth,
+                    detected_methods=[
+                        name
+                        for name, _
+                        in rule_methods.most_common(25)
+                    ],
+                )
 
-if not sdk_available():
-    st.error("`google-genai` is not installed.")
+                set_stage(
+                    "core",
+                    depth,
+                    result,
+                    model,
+                )
 
-if len(pdf_bytes) > 50 * 1024 * 1024:
-    st.error(
-        L(
-            lang,
-            "현재 beta는 50 MB 이하 PDF만 지원합니다.",
-            "The current beta supports PDFs up to 50 MB.",
-        )
-    )
+                st.rerun()
 
-can_run = bool(
-    existing_key
-    and sdk_available()
-    and len(pdf_bytes) <= 50 * 1024 * 1024
+            except Exception as exc:
+                show_stage_error(
+                    "Core Analysis",
+                    exc,
+                )
+
+    st.stop()
+
+
+core_data = selected_language_data(
+    core_record
 )
 
-analyze_clicked = st.button(
+overview = core_data.get(
+    "overview",
+    {},
+)
+
+st.success(
     L(
         lang,
-        "✨ AI Deep Study 시작",
-        "✨ Start AI Deep Study",
-    ),
-    type="primary",
-    use_container_width=True,
-    disabled=not can_run,
+        "Core Analysis 완료. 이제 필요한 심화 모듈만 선택해서 생성할 수 있습니다.",
+        "Core Analysis complete. Generate only the deeper modules you need.",
+    )
 )
+model_badge(core_record)
 
-cache_key = make_cache_key(
-    pdf_bytes,
-    "bilingual",
+
+# ============================================================
+# MODULE STATUS
+# ============================================================
+
+prereq_record = get_stage(
+    "prerequisites",
     depth,
-    "auto-flash-pool",
+)
+experiments_record = get_stage(
+    "experiments",
+    depth,
+)
+figures_record = get_stage(
+    "figures",
+    depth,
+)
+critical_record = get_stage(
+    "critical_learning",
+    depth,
 )
 
-result_key = "lal_ai_result:" + cache_key
+st.subheader(
+    L(
+        lang,
+        "Deep Study Modules",
+        "Deep Study Modules",
+    )
+)
 
-if analyze_clicked:
-    with st.spinner(
+module_cols = st.columns(4)
+
+module_info = [
+    (
+        module_cols[0],
+        "🧠",
+        L(lang, "선수지식", "Prerequisites"),
+        prereq_record,
+    ),
+    (
+        module_cols[1],
+        "🔬",
+        L(lang, "실험 전략", "Experiments"),
+        experiments_record,
+    ),
+    (
+        module_cols[2],
+        "🖼",
+        "Figures",
+        figures_record,
+    ),
+    (
+        module_cols[3],
+        "🧐",
         L(
             lang,
-            "AI 분석 중... 서버가 혼잡하면 자동 재시도 후 다른 Flash model로 전환합니다.",
-            "Analyzing... transient failures are retried and then another Flash model is used automatically.",
-        )
-    ):
-        try:
-            analysis = analyze_pdf(
-                pdf_bytes=pdf_bytes,
-                api_key=existing_key,
-                language=lang,
-                depth=depth,
-                detected_methods=[
-                    name
-                    for name, _ in rule_methods.most_common(30)
-                ],
-                model=None,
+            "비판적 읽기",
+            "Critical Reading",
+        ),
+        critical_record,
+    ),
+]
+
+for col, icon, label, record in (
+    module_info
+):
+    with col:
+        with st.container(
+            border=True
+        ):
+            st.markdown(
+                f"### {icon} {label}"
             )
 
-            st.session_state[
-                result_key
-            ] = analysis.model_dump()
-
-        except Exception as exc:
-            st.error(
-                L(
-                    lang,
-                    f"AI 분석에 실패했습니다: {exc}",
-                    f"AI analysis failed: {exc}",
+            if record:
+                st.success(
+                    L(
+                        lang,
+                        "생성 완료",
+                        "Ready",
+                    )
                 )
-            )
-
-analysis_bundle = st.session_state.get(
-    result_key
-)
-
-analysis_data = None
-
-if analysis_bundle:
-    if (
-        isinstance(analysis_bundle, dict)
-        and "ko" in analysis_bundle
-        and "en" in analysis_bundle
-    ):
-        analysis_data = analysis_bundle[
-            lang
-        ]
-    else:
-        analysis_data = analysis_bundle
+                model_badge(record)
+            else:
+                st.caption(
+                    L(
+                        lang,
+                        "아직 생성 안 함",
+                        "Not generated yet",
+                    )
+                )
 
 
 # ============================================================
-# AI RESULTS
+# TABS
 # ============================================================
 
-if analysis_data:
-    st.success(
+tabs = st.tabs(
+    [
         L(
             lang,
-            "AI Deep Study가 생성되었습니다. 한국어/English 결과가 함께 저장되어 언어를 바꿔도 다시 분석하지 않습니다.",
-            "AI Deep Study generated. Korean and English results are stored together, so switching language does not re-analyze the PDF.",
-        )
-    )
-
-    overview = analysis_data[
-        "overview"
+            "🎯 한눈에 보기",
+            "🎯 Overview",
+        ),
+        L(
+            lang,
+            "🧭 논리 지도",
+            "🧭 Logic Map",
+        ),
+        L(
+            lang,
+            "🧠 선수지식",
+            "🧠 Prerequisites",
+        ),
+        L(
+            lang,
+            "🔬 실험 전략",
+            "🔬 Experiments",
+        ),
+        "🖼 Figures",
+        L(
+            lang,
+            "🧐 비판적 읽기 + 다음 학습",
+            "🧐 Critical Reading + Learn Next",
+        ),
     ]
+)
 
-    tabs = st.tabs(
-        [
-            L(lang, "🎯 한눈에 보기", "🎯 Overview"),
-            L(lang, "🧭 논리 지도", "🧭 Logic Map"),
-            L(lang, "🧠 선수지식", "🧠 Prerequisites"),
-            L(lang, "🔬 실험 전략", "🔬 Experiments"),
-            L(lang, "🖼 Figure", "🖼 Figures"),
-            L(lang, "🧐 비판적 읽기", "🧐 Critical Reading"),
-            L(lang, "📚 다음 학습", "📚 Learn Next"),
-        ]
+
+# ============================================================
+# OVERVIEW
+# ============================================================
+
+with tabs[0]:
+    st.header(
+        overview.get(
+            "title",
+            paper_name,
+        )
     )
 
-    # --------------------------------------------------------
-    # OVERVIEW
-    # --------------------------------------------------------
-    with tabs[0]:
-        st.header(
-            overview.get(
-                "title",
-                paper_name,
-            )
+    st.info(
+        overview.get(
+            "one_sentence_takeaway",
+            "",
         )
+    )
 
-        st.info(
+    left, right = st.columns(2)
+
+    with left:
+        st.markdown(
+            f"### {L(lang,'❓ 연구 질문','❓ Research question')}"
+        )
+        st.write(
             overview.get(
-                "one_sentence_takeaway",
+                "research_question",
                 "",
             )
         )
 
-        c1, c2 = st.columns(2)
-
-        with c1:
-            st.markdown(
-                f"### {L(lang,'❓ 연구 질문','❓ Research question')}"
-            )
-            st.write(
-                overview.get(
-                    "research_question",
-                    "",
-                )
-            )
-
-            st.markdown(
-                f"### {L(lang,'🕳 Knowledge gap','🕳 Knowledge gap')}"
-            )
-            st.write(
-                overview.get(
-                    "knowledge_gap",
-                    "",
-                )
-            )
-
-            st.markdown(
-                f"### {L(lang,'🧪 Hypothesis','🧪 Hypothesis')}"
-            )
-            st.write(
-                overview.get(
-                    "hypothesis",
-                    "",
-                )
-            )
-
-        with c2:
-            st.markdown(
-                f"### {L(lang,'🌍 왜 중요한가','🌍 Why it matters')}"
-            )
-            st.write(
-                overview.get(
-                    "why_it_matters",
-                    "",
-                )
-            )
-
-            st.markdown(
-                f"### {L(lang,'✨ 새로움','✨ Novelty')}"
-            )
-            st.write(
-                overview.get(
-                    "novelty",
-                    "",
-                )
-            )
-
-            st.markdown(
-                f"### {L(lang,'🏁 결론','🏁 Conclusion')}"
-            )
-            st.write(
-                overview.get(
-                    "conclusion",
-                    "",
-                )
-            )
-
-        st.caption(
-            f"{L(lang,'분야','Field')}: "
-            + overview.get(
-                "field",
-                "-",
+        st.markdown(
+            "### 🕳 Knowledge gap"
+        )
+        st.write(
+            overview.get(
+                "knowledge_gap",
+                "",
             )
         )
 
-    # --------------------------------------------------------
-    # LOGIC MAP
-    # --------------------------------------------------------
-    with tabs[1]:
-        st.header(
-            L(
-                lang,
-                "🧭 논문의 논리 지도",
-                "🧭 Paper Logic Map",
+        st.markdown(
+            "### 🧪 Hypothesis"
+        )
+        st.write(
+            overview.get(
+                "hypothesis",
+                "",
             )
         )
 
-        st.caption(
-            L(
-                lang,
-                "논문의 결과를 나열하는 대신 '왜 다음 실험으로 넘어갔는가'를 따라갑니다.",
-                "Follows why the authors moved from one experiment to the next instead of merely listing results.",
+    with right:
+        st.markdown(
+            f"### {L(lang,'🌍 왜 중요한가','🌍 Why it matters')}"
+        )
+        st.write(
+            overview.get(
+                "why_it_matters",
+                "",
             )
         )
 
-        logic_map = analysis_data.get(
-            "logic_map",
-            [],
+        st.markdown(
+            f"### {L(lang,'✨ 새로움','✨ Novelty')}"
+        )
+        st.write(
+            overview.get(
+                "novelty",
+                "",
+            )
         )
 
-        for i, step in enumerate(
-            logic_map
+        st.markdown(
+            f"### {L(lang,'🏁 결론','🏁 Conclusion')}"
+        )
+        st.write(
+            overview.get(
+                "conclusion",
+                "",
+            )
+        )
+
+    st.caption(
+        f"{L(lang,'분야','Field')}: "
+        + overview.get(
+            "field",
+            "-",
+        )
+    )
+
+
+# ============================================================
+# LOGIC MAP
+# ============================================================
+
+with tabs[1]:
+    st.header(
+        L(
+            lang,
+            "🧭 논문의 논리 지도",
+            "🧭 Paper Logic Map",
+        )
+    )
+
+    st.caption(
+        L(
+            lang,
+            "결과를 나열하는 대신 왜 다음 실험으로 넘어가는지 따라갑니다.",
+            "Follow why the paper moves from one experiment to the next.",
+        )
+    )
+
+    logic_map = core_data.get(
+        "logic_map",
+        [],
+    )
+
+    for i, step in enumerate(
+        logic_map
+    ):
+        with st.container(
+            border=True
         ):
-            with st.container(
-                border=True
-            ):
+            st.markdown(
+                f"### {step.get('order',i+1)}. "
+                f"{step.get('question','')}"
+            )
+
+            c1, c2 = st.columns(2)
+
+            with c1:
                 st.markdown(
-                    f"### {step.get('order', i+1)}. "
-                    f"{step.get('question','')}"
+                    f"**{L(lang,'실험 / 분석','Experiment / analysis')}**"
+                )
+                st.write(
+                    step.get(
+                        "experiment_or_analysis",
+                        "",
+                    )
                 )
 
-                q1, q2 = st.columns(2)
+                st.markdown(
+                    f"**{L(lang,'직접 관찰','Direct observation')}**"
+                )
+                st.write(
+                    step.get(
+                        "observation",
+                        "",
+                    )
+                )
 
-                with q1:
-                    st.markdown(
-                        f"**{L(lang,'실험 / 분석','Experiment / analysis')}**"
+            with c2:
+                st.markdown(
+                    f"**{L(lang,'해석 / 추론','Inference')}**"
+                )
+                st.write(
+                    step.get(
+                        "inference",
+                        "",
                     )
-                    st.write(
-                        step.get(
-                            "experiment_or_analysis",
-                            "",
-                        )
-                    )
+                )
 
-                    st.markdown(
-                        f"**{L(lang,'직접 관찰','Direct observation')}**"
+                st.caption(
+                    f"{L(lang,'근거','Evidence')}: "
+                    + step.get(
+                        "evidence_location",
+                        "",
                     )
-                    st.write(
-                        step.get(
-                            "observation",
-                            "",
-                        )
-                    )
+                )
 
-                with q2:
-                    st.markdown(
-                        f"**{L(lang,'해석 / 추론','Inference')}**"
-                    )
-                    st.write(
-                        step.get(
-                            "inference",
-                            "",
-                        )
-                    )
+        if i < len(logic_map) - 1:
+            logic_arrow()
 
-                    st.markdown(
-                        f"**{L(lang,'근거 위치','Evidence')}**"
-                    )
-                    st.write(
-                        step.get(
-                            "evidence_location",
-                            "",
-                        )
-                    )
 
-            if i < len(logic_map) - 1:
-                logic_arrow()
+# ============================================================
+# PREREQUISITES
+# ============================================================
 
-    # --------------------------------------------------------
-    # PREREQUISITES
-    # --------------------------------------------------------
-    with tabs[2]:
-        st.header(
+with tabs[2]:
+    st.header(
+        L(
+            lang,
+            "🧠 이 논문을 이해하기 위한 선수지식",
+            "🧠 Prerequisites",
+        )
+    )
+
+    if not prereq_record:
+        st.write(
             L(
                 lang,
-                "🧠 이 논문을 이해하기 위한 선수지식",
-                "🧠 Prerequisites for this paper",
+                "이 모듈은 아직 API를 호출하지 않았습니다.",
+                "This module has not called the API yet.",
             )
         )
 
-        st.caption(
+        if st.button(
             L(
                 lang,
-                "일반 배경지식과 '이 논문에서 왜 필요한가'를 분리해서 보여줍니다.",
-                "Separates general background knowledge from why the concept matters specifically in this paper.",
-            )
+                "🧠 선수지식 생성",
+                "🧠 Generate prerequisites",
+            ),
+            type="primary",
+            key="generate_prerequisites",
+        ):
+            with st.spinner(
+                L(
+                    lang,
+                    "이 논문에서 실제로 필요한 선수지식을 선별 중...",
+                    "Selecting the prerequisites that actually unlock this paper...",
+                )
+            ):
+                try:
+                    result, model = (
+                        analyze_prerequisites(
+                            paper_text=paper_text,
+                            core_bundle=core_record["data"],
+                            api_key=server_key,
+                            depth=depth,
+                        )
+                    )
+
+                    set_stage(
+                        "prerequisites",
+                        depth,
+                        result,
+                        model,
+                    )
+
+                    st.rerun()
+
+                except Exception as exc:
+                    show_stage_error(
+                        L(
+                            lang,
+                            "선수지식",
+                            "Prerequisites",
+                        ),
+                        exc,
+                    )
+
+    else:
+        data = selected_language_data(
+            prereq_record
         )
 
-        for concept in analysis_data.get(
+        model_badge(
+            prereq_record
+        )
+
+        for concept in data.get(
             "prerequisites",
             [],
         ):
-            title = (
-                f"{concept.get('name','')} · "
-                f"{difficulty_label(concept.get('difficulty',''),lang)}"
-            )
-
             with st.expander(
-                title
+                f"{concept.get('name','')} · "
+                f"{difficulty_label(concept.get('difficulty',''))}"
             ):
                 st.markdown(
                     f"**{L(lang,'왜 알아야 하나?','Why do I need this?')}**"
@@ -876,7 +1150,7 @@ if analysis_data:
                 )
 
                 st.markdown(
-                    f"**{L(lang,'배경지식','Background knowledge')}**"
+                    f"**{L(lang,'배경지식','Background')}**"
                 )
                 st.write(
                     concept.get(
@@ -895,35 +1169,99 @@ if analysis_data:
                     )
                 )
 
-                prerequisites = concept.get(
-                    "prerequisites",
-                    [],
-                )
-
-                if prerequisites:
+                if concept.get(
+                    "prerequisites"
+                ):
                     st.markdown(
                         f"**{L(lang,'먼저 알면 좋은 것','Learn first')}**"
                     )
                     st.write(
                         " → ".join(
-                            prerequisites
+                            concept[
+                                "prerequisites"
+                            ]
                         )
                     )
 
-    # --------------------------------------------------------
-    # EXPERIMENTS
-    # --------------------------------------------------------
-    with tabs[3]:
-        st.header(
+
+# ============================================================
+# EXPERIMENTS
+# ============================================================
+
+with tabs[3]:
+    st.header(
+        "🔬 Experimental Strategy"
+    )
+
+    if not experiments_record:
+        st.write(
             L(
                 lang,
-                "🔬 Experimental Strategy",
-                "🔬 Experimental Strategy",
+                "핵심 실험의 What/Why/Readout을 필요할 때만 생성합니다.",
+                "Generate What/Why/Readout cards only when you need them.",
             )
         )
 
+        if st.button(
+            L(
+                lang,
+                "🔬 실험 전략 생성",
+                "🔬 Generate experiment analysis",
+            ),
+            type="primary",
+            key="generate_experiments",
+        ):
+            with st.spinner(
+                L(
+                    lang,
+                    "핵심 실험과 각 실험의 역할을 분석 중...",
+                    "Analyzing the major experiments and why they were used...",
+                )
+            ):
+                try:
+                    result, model = (
+                        analyze_experiments(
+                            paper_text=paper_text,
+                            core_bundle=core_record["data"],
+                            api_key=server_key,
+                            detected_methods=[
+                                name
+                                for name, _
+                                in rule_methods.most_common(30)
+                            ],
+                        )
+                    )
+
+                    set_stage(
+                        "experiments",
+                        depth,
+                        result,
+                        model,
+                    )
+
+                    st.rerun()
+
+                except Exception as exc:
+                    show_stage_error(
+                        L(
+                            lang,
+                            "실험 전략",
+                            "Experiments",
+                        ),
+                        exc,
+                    )
+
+    else:
+        data = selected_language_data(
+            experiments_record
+        )
+
+        model_badge(
+            experiments_record
+        )
+
         for idx, exp in enumerate(
-            analysis_data.get(
+            data.get(
                 "experiments",
                 [],
             )
@@ -944,7 +1282,7 @@ if analysis_data:
 
                 with c1:
                     st.markdown(
-                        f"**{L(lang,'이 실험이 묻는 질문','Scientific question')}**"
+                        f"**{L(lang,'질문','Scientific question')}**"
                     )
                     st.write(
                         exp.get(
@@ -964,7 +1302,7 @@ if analysis_data:
                     )
 
                     st.markdown(
-                        f"**{L(lang,'조작 변수','Manipulation')}**"
+                        f"**{L(lang,'조작 / 비교','Manipulation / comparison')}**"
                     )
                     st.write(
                         exp.get(
@@ -974,7 +1312,7 @@ if analysis_data:
                     )
 
                     st.markdown(
-                        f"**{L(lang,'측정값','Readout')}**"
+                        f"**{L(lang,'Readout','Readout')}**"
                     )
                     st.write(
                         exp.get(
@@ -985,7 +1323,7 @@ if analysis_data:
 
                 with c2:
                     st.markdown(
-                        f"**{L(lang,'왜 이 방법인가?','Why this method?')}**"
+                        f"**{L(lang,'왜 이 method인가?','Why this method?')}**"
                     )
                     st.write(
                         exp.get(
@@ -995,7 +1333,7 @@ if analysis_data:
                     )
 
                     st.markdown(
-                        f"**{L(lang,'결과가 의미하는 것','What the result means')}**"
+                        f"**{L(lang,'무엇을 지지하나','What it supports')}**"
                     )
                     st.write(
                         exp.get(
@@ -1005,7 +1343,7 @@ if analysis_data:
                     )
 
                     st.markdown(
-                        f"**{L(lang,'해석의 한계','Limitation')}**"
+                        f"**{L(lang,'한계','Limitation')}**"
                     )
                     st.write(
                         exp.get(
@@ -1032,55 +1370,87 @@ if analysis_data:
                     with b1:
                         method_jump_button(
                             canonical,
-                            key=f"method_jump_{idx}",
+                            key=f"method_{idx}",
                             target="method",
                         )
 
                     with b2:
                         method_jump_button(
                             canonical,
-                            key=f"figure_jump_{idx}",
+                            key=f"figure_{idx}",
                             target="figure",
                         )
 
-                    profile = profiles_by_name.get(
-                        canonical,
-                        {},
+
+# ============================================================
+# FIGURES
+# ============================================================
+
+with tabs[4]:
+    st.header(
+        "🖼 Figure-by-Figure"
+    )
+
+    st.caption(
+        L(
+            lang,
+            "이 단계만 PDF 자체를 다시 AI에 전달합니다. Figure를 보고 싶을 때만 호출합니다.",
+            "Only this stage sends the PDF itself again, and only when you request Figure analysis.",
+        )
+    )
+
+    if not figures_record:
+        if st.button(
+            L(
+                lang,
+                "🖼 Figure 분석 생성",
+                "🖼 Generate Figure analysis",
+            ),
+            type="primary",
+            key="generate_figures",
+        ):
+            with st.spinner(
+                L(
+                    lang,
+                    "PDF의 Figure와 panel을 읽는 중...",
+                    "Reading Figures and panels from the PDF...",
+                )
+            ):
+                try:
+                    result, model = (
+                        analyze_figures(
+                            pdf_bytes=pdf_bytes,
+                            core_bundle=core_record["data"],
+                            api_key=server_key,
+                        )
                     )
 
-                    if profile:
-                        st.caption(
-                            L(
-                                lang,
-                                f"LALSTUDY corpus: {profile.get('paper_count',0)} papers · "
-                                f"{profile.get('figure_count',0)} Figure examples",
-                                f"LALSTUDY corpus: {profile.get('paper_count',0)} papers · "
-                                f"{profile.get('figure_count',0)} Figure examples",
-                            )
-                        )
+                    set_stage(
+                        "figures",
+                        depth,
+                        result,
+                        model,
+                    )
 
-    # --------------------------------------------------------
-    # FIGURES
-    # --------------------------------------------------------
-    with tabs[4]:
-        st.header(
-            L(
-                lang,
-                "🖼 Figure-by-Figure",
-                "🖼 Figure-by-Figure",
-            )
+                    st.rerun()
+
+                except Exception as exc:
+                    show_stage_error(
+                        "Figures",
+                        exc,
+                    )
+
+    else:
+        data = selected_language_data(
+            figures_record
         )
 
-        st.caption(
-            L(
-                lang,
-                "각 Figure를 '무엇을 했나'보다 '왜 했고 무엇까지 말할 수 있나' 중심으로 읽습니다.",
-                "Reads each Figure around why it was done and what can legitimately be concluded.",
-            )
+        model_badge(
+            figures_record
         )
 
         for f_idx, figure in enumerate(
-            analysis_data.get(
+            data.get(
                 "figures",
                 [],
             )
@@ -1105,27 +1475,29 @@ if analysis_data:
                 )
 
                 if panels:
+                    labels = [
+                        p.get(
+                            "panel_label",
+                            f"Panel {i+1}",
+                        )
+                        for i, p in enumerate(
+                            panels
+                        )
+                    ]
+
                     panel_tabs = st.tabs(
-                        [
-                            p.get(
-                                "panel_label",
-                                f"Panel {i+1}",
-                            )
-                            for i, p in enumerate(
-                                panels
-                            )
-                        ]
+                        labels
                     )
 
-                    for p_idx, panel in enumerate(
+                    for i, panel in enumerate(
                         panels
                     ):
-                        with panel_tabs[p_idx]:
-                            a, b = st.columns(2)
+                        with panel_tabs[i]:
+                            c1, c2 = st.columns(2)
 
-                            with a:
+                            with c1:
                                 st.markdown(
-                                    f"**{L(lang,'WHAT','WHAT')}**"
+                                    "**WHAT**"
                                 )
                                 st.write(
                                     panel.get(
@@ -1135,7 +1507,7 @@ if analysis_data:
                                 )
 
                                 st.markdown(
-                                    f"**{L(lang,'HOW','HOW')}**"
+                                    "**HOW**"
                                 )
                                 st.write(
                                     panel.get(
@@ -1144,9 +1516,9 @@ if analysis_data:
                                     )
                                 )
 
-                            with b:
+                            with c2:
                                 st.markdown(
-                                    f"**{L(lang,'RESULT','RESULT')}**"
+                                    "**RESULT**"
                                 )
                                 st.write(
                                     panel.get(
@@ -1156,7 +1528,7 @@ if analysis_data:
                                 )
 
                                 st.markdown(
-                                    f"**{L(lang,'INTERPRETATION','INTERPRETATION')}**"
+                                    "**INTERPRETATION**"
                                 )
                                 st.write(
                                     panel.get(
@@ -1165,26 +1537,25 @@ if analysis_data:
                                     )
                                 )
 
-                            methods_here = panel.get(
-                                "methods",
-                                [],
-                            )
-
-                            if methods_here:
+                            if panel.get(
+                                "methods"
+                            ):
                                 st.caption(
                                     "Methods: "
                                     + ", ".join(
-                                        methods_here
+                                        panel[
+                                            "methods"
+                                        ]
                                     )
                                 )
 
                 st.divider()
 
-                x1, x2 = st.columns(2)
+                c1, c2 = st.columns(2)
 
-                with x1:
+                with c1:
                     st.markdown(
-                        f"**{L(lang,'Figure 전체 takeaway','Overall takeaway')}**"
+                        f"**{L(lang,'전체 takeaway','Overall takeaway')}**"
                     )
                     st.write(
                         figure.get(
@@ -1194,7 +1565,7 @@ if analysis_data:
                     )
 
                     st.markdown(
-                        f"**{L(lang,'이 Figure가 지지하는 것','What it supports')}**"
+                        f"**{L(lang,'지지하는 것','What it supports')}**"
                     )
                     st.write(
                         figure.get(
@@ -1203,9 +1574,9 @@ if analysis_data:
                         )
                     )
 
-                with x2:
+                with c2:
                     st.markdown(
-                        f"**{L(lang,'하지만 이것까지 증명하진 않는다','What it does NOT prove')}**"
+                        f"**{L(lang,'증명하지 못하는 것','What it does NOT establish')}**"
                     )
                     st.write(
                         figure.get(
@@ -1214,19 +1585,89 @@ if analysis_data:
                         )
                     )
 
-    # --------------------------------------------------------
-    # CRITICAL READING
-    # --------------------------------------------------------
-    with tabs[5]:
-        st.header(
+
+# ============================================================
+# CRITICAL + LEARN NEXT
+# ============================================================
+
+with tabs[5]:
+    st.header(
+        L(
+            lang,
+            "🧐 비판적 읽기 + 📚 다음 학습",
+            "🧐 Critical Reading + 📚 Learn Next",
+        )
+    )
+
+    if not critical_record:
+        st.write(
             L(
                 lang,
-                "🧐 비판적으로 읽기",
-                "🧐 Critical Reading",
+                "핵심 논리를 이해한 뒤 필요할 때만 마지막 비판적 분석을 생성합니다.",
+                "Generate the final critical-reading layer only after the core analysis.",
             )
         )
 
-        crit = analysis_data.get(
+        if st.button(
+            L(
+                lang,
+                "🧐 Critical Reading 생성",
+                "🧐 Generate Critical Reading",
+            ),
+            type="primary",
+            key="generate_critical",
+        ):
+            with st.spinner(
+                L(
+                    lang,
+                    "논문의 가장 강한 근거와 약한 연결고리를 점검 중...",
+                    "Evaluating the strongest evidence and weakest inferential links...",
+                )
+            ):
+                try:
+                    result, model = (
+                        analyze_critical_learning(
+                            paper_text=paper_text,
+                            core_bundle=core_record["data"],
+                            experiments_bundle=(
+                                experiments_record["data"]
+                                if experiments_record
+                                else None
+                            ),
+                            api_key=server_key,
+                            depth=depth,
+                        )
+                    )
+
+                    set_stage(
+                        "critical_learning",
+                        depth,
+                        result,
+                        model,
+                    )
+
+                    st.rerun()
+
+                except Exception as exc:
+                    show_stage_error(
+                        L(
+                            lang,
+                            "비판적 읽기",
+                            "Critical Reading",
+                        ),
+                        exc,
+                    )
+
+    else:
+        data = selected_language_data(
+            critical_record
+        )
+
+        model_badge(
+            critical_record
+        )
+
+        crit = data.get(
             "critical_reading",
             {},
         )
@@ -1255,7 +1696,7 @@ if analysis_data:
             )
 
             st.markdown(
-                f"### {L(lang,'🧪 내가 하나 더 한다면','🧪 One experiment I would add')}"
+                f"### {L(lang,'🧪 하나 더 한다면','🧪 One experiment to add')}"
             )
             st.write(
                 crit.get(
@@ -1266,7 +1707,7 @@ if analysis_data:
 
         with c2:
             st.markdown(
-                f"### {L(lang,'🔀 가능한 대안 해석','🔀 Alternative explanations')}"
+                f"### {L(lang,'🔀 대안 해석','🔀 Alternative explanations')}"
             )
 
             for item in crit.get(
@@ -1290,7 +1731,7 @@ if analysis_data:
                 )
 
         st.markdown(
-            f"### {L(lang,'👀 Reviewer라면 물을 질문','👀 Questions I would ask as a reviewer')}"
+            f"### {L(lang,'👀 Reviewer라면 물을 질문','👀 Reviewer questions')}"
         )
 
         for item in crit.get(
@@ -1301,20 +1742,18 @@ if analysis_data:
                 f"- {item}"
             )
 
-    # --------------------------------------------------------
-    # LEARN NEXT
-    # --------------------------------------------------------
-    with tabs[6]:
+        st.divider()
+
         st.header(
             L(
                 lang,
                 "📚 이 논문을 다시 읽기 전에",
-                "📚 Before reading the paper again",
+                "📚 Before reading again",
             )
         )
 
         for item in sorted(
-            analysis_data.get(
+            data.get(
                 "learning_path",
                 [],
             ),
@@ -1346,51 +1785,71 @@ if analysis_data:
                     )
                 )
 
-        st.divider()
 
-        st.download_button(
-            L(
-                lang,
-                "⬇️ AI Learning Map JSON 저장",
-                "⬇️ Download AI Learning Map JSON",
-            ),
-            data=json.dumps(
-                analysis_data,
-                ensure_ascii=False,
-                indent=2,
-            ),
-            file_name=(
-                Path(
-                    paper_name
-                ).stem
-                + "_lalstudy_v020.json"
-            ),
-            mime="application/json",
-            use_container_width=True,
-        )
-
-        if st.button(
-            L(
-                lang,
-                "🔄 이 논문 AI 분석 결과 지우기",
-                "🔄 Clear this AI analysis",
-            )
-        ):
-            st.session_state.pop(
-                result_key,
-                None,
-            )
-            st.rerun()
-
+# ============================================================
+# EXPORT
+# ============================================================
 
 st.divider()
+
+all_records = {
+    "core": core_record,
+    "prerequisites": prereq_record,
+    "experiments": experiments_record,
+    "figures": figures_record,
+    "critical_learning": critical_record,
+}
+
+export_data = {
+    "lalstudy_version": APP_VERSION,
+    "paper_name": paper_name,
+    "paper_hash": active_hash(),
+    "depth": depth,
+    "modules": {
+        key: (
+            value.get("data")
+            if value
+            else None
+        )
+        for key, value in (
+            all_records.items()
+        )
+    },
+    "models": {
+        key: (
+            value.get("model")
+            if value
+            else None
+        )
+        for key, value in (
+            all_records.items()
+        )
+    },
+}
+
+st.download_button(
+    L(
+        lang,
+        "⬇️ 현재 Learning Map JSON 저장",
+        "⬇️ Download current Learning Map JSON",
+    ),
+    data=json.dumps(
+        export_data,
+        ensure_ascii=False,
+        indent=2,
+    ),
+    file_name=(
+        Path(paper_name).stem
+        + "_lalstudy_v023.json"
+    ),
+    mime="application/json",
+    use_container_width=True,
+)
 
 st.caption(
     L(
         lang,
-        "LALSTUDY v0.2.0-beta · AI-generated study aids can contain errors. "
-        "Study-specific claims should be checked against the original paper.",
-        "LALSTUDY v0.2.0-beta · AI-generated study aids can contain errors. "
-        "Study-specific claims should be checked against the original paper.",
+        "v0.2.3-beta: 각 AI module은 독립적으로 저장됩니다. 한 module 실패가 다른 결과를 지우지 않습니다.",
+        "v0.2.3-beta: each AI module is stored independently; one module failing does not erase the others.",
     )
 )

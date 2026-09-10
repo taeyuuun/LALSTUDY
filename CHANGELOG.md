@@ -2,6 +2,32 @@
 
 All notable LALSTUDY updates will be recorded here.
 
+## [0.2.3-beta] - 2026-09-11
+
+### Architecture
+- Replaced one giant Deep Study request with staged / lazy analysis
+- Core Analysis now generates only Overview + Logic Map
+- Prerequisites, Experiments, Figures, and Critical Reading are generated on demand
+- Each module is cached independently in Streamlit session state
+- Failed modules no longer invalidate successful modules
+
+### Reliability / cost
+- Text-oriented stages use extracted paper text instead of re-sending the PDF
+- Only Figure analysis sends the PDF as multimodal input
+- Reduced retry count per model to avoid long failure loops
+- Text fallback: Gemini 3.8 Flash → 3.5 Flash → 3.5 Flash-Lite
+- Figure fallback: Gemini 3.8 Flash → 3.5 Flash
+- Low thinking level is used to reduce latency and output overhead
+
+### UX
+- First useful result arrives after Core Analysis
+- Four Deep Study module status cards show what has and has not been generated
+- Korean / English switching remains instant for generated modules
+- Active PDF persists across pages
+- Partial Learning Map JSON can be exported at any time
+
+All notable LALSTUDY updates will be recorded here.
+
 ## [0.2.2-beta] - 2026-09-10
 
 ### Added

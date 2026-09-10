@@ -2,7 +2,7 @@
 
 > Learn a paper, understand the experiment, and keep learning without losing context.
 
-**Current version: `v0.2.2-beta`**
+**Current version: `v0.2.3-beta`**
 
 LALSTUDY is an experimental scientific-paper learning platform that connects two workflows:
 
@@ -215,3 +215,43 @@ Automatic model order:
 Transient 429/5xx errors are retried before fallback.
 
 **Important:** a public app can consume the owner's API quota and billing budget.
+
+
+## v0.2.3 — staged / lazy AI analysis
+
+The previous Deep Study architecture requested the whole learning map in one
+large multimodal structured-output call.
+
+v0.2.3 splits the workflow into independently cached stages:
+
+```text
+Stage 1: Core
+  ├─ Overview
+  └─ Logic Map
+
+Stage 2: Prerequisites        (on demand)
+Stage 3: Experiments          (on demand)
+Stage 4: Figures              (on demand; PDF multimodal input)
+Stage 5: Critical + Learn Next(on demand)
+```
+
+Benefits:
+- smaller structured outputs
+- much faster first useful result
+- fewer wasted calls for sections a user never opens
+- a failure in one stage does not erase successful stages
+- language switching uses the bilingual result already stored for that stage
+- active paper state still survives multipage navigation
+
+Text-oriented stages use extracted paper text rather than repeatedly sending
+the full PDF. Only Figure analysis sends the actual PDF again.
+
+Default fallback pools:
+
+```text
+Text stages:
+gemini-3.8-flash → gemini-3.5-flash → gemini-3.5-flash-lite
+
+Figure stage:
+gemini-3.8-flash → gemini-3.5-flash
+```
