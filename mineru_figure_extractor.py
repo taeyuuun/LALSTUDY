@@ -17,7 +17,7 @@ except Exception:
     fitz = None
 
 
-MINERU_EXTRACTOR_VERSION = "4"
+MINERU_EXTRACTOR_VERSION = "5"
 
 CAPTION_RE = re.compile(
     r"^\s*(?:fig(?:ure)?\.?\s*)(\d+[A-Za-z]?)\s*[.:]?\s*",
@@ -346,6 +346,353 @@ def _render_middle_bbox(
                 pass
 
 
+
+def _panel_count_from_caption(text: str) -> int:
+    """
+    Count distinct main-panel labels mentioned in a Figure caption.
+    Examples: (A), (B and C), (D-G)
+    """
+    if not text:
+        return 0
+
+    found = set()
+
+    for match in re.finditer(
+        r"\(\s*([A-H])(?:\s*(?:and|–|-|to)\s*([A-H]))?\s*\)",
+        text,
+        flags=re.IGNORECASE,
+    ):
+        start = match.group(1).upper()
+        end = match.group(2)
+
+        if not end:
+            found.add(start)
+            continue
+
+        end = end.upper()
+
+        for code in range(
+            ord(start),
+            ord(end) + 1,
+        ):
+            found.add(chr(code))
+
+    # Also detect loose patterns like "B and C" after a parenthesized label.
+    for letter in re.findall(
+        r"(?<![A-Za-z])([A-H])(?=\s*(?:,|and|–|-|\)))",
+        text,
+        flags=re.IGNORECASE,
+    ):
+        found.add(letter.upper())
+
+    return len(found)
+
+
+def _rect_width(box) -> float:
+    try:
+        return max(
+            0.0,
+            float(box[2]) - float(box[0]),
+        )
+    except Exception:
+        return 0.0
+
+
+def _rect_height(box) -> float:
+    try:
+        return max(
+            0.0,
+            float(box[3]) - float(box[1]),
+        )
+    except Exception:
+        return 0.0
+
+
+def _horizontal_overlap_ratio(a, b) -> float:
+    try:
+        ax0, _, ax1, _ = [
+            float(v)
+            for v in a
+        ]
+
+        bx0, _, bx1, _ = [
+            float(v)
+            for v in b
+        ]
+    except Exception:
+        return 0.0
+
+    overlap = max(
+        0.0,
+        min(ax1, bx1)
+        - max(ax0, bx0),
+    )
+
+    denom = max(
+        1.0,
+        min(
+            ax1 - ax0,
+            bx1 - bx0,
+        ),
+    )
+
+    return overlap / denom
+
+
+def _looks_like_prose(text: str) -> bool:
+    text = (
+        text
+        or ""
+    ).strip()
+
+    words = text.split()
+
+    if len(words) < 20:
+        return False
+
+    punctuation = sum(
+        text.count(ch)
+        for ch in [".", ",", ";", ":"]
+    )
+
+    return punctuation >= 2
+
+
+def _caption_anchor_crop(
+    *,
+    pdf_bytes: bytes,
+    page_idx: int,
+    caption_bbox,
+    page_size,
+    backend: str,
+    cache_dir: Path,
+    key: str,
+    zoom: float = 2.5,
+) -> Optional[Path]:
+    """
+    Hybrid recovery mode:
+
+    MinerU tells us WHICH text block is the real Figure caption.
+    We then ignore MinerU's incomplete image-body geometry and crop the
+    visual region immediately above that caption from the original PDF.
+
+    This is specifically designed for multi-panel scientific Figures that
+    MinerU may split into isolated panel bodies.
+    """
+    if fitz is None:
+        return None
+
+    doc = None
+
+    try:
+        doc = fitz.open(
+            stream=pdf_bytes,
+            filetype="pdf",
+        )
+
+        if (
+            page_idx < 0
+            or page_idx >= len(doc)
+        ):
+            return None
+
+        page = doc[page_idx]
+
+        caption_rect = _bbox_to_pdf_rect(
+            bbox=caption_bbox,
+            page_size=page_size,
+            pdf_page=page,
+            backend=backend,
+        )
+
+        if caption_rect is None:
+            return None
+
+        page_w = float(
+            page.rect.width
+        )
+
+        # Caption width tells us whether this is a single-column or full-width Figure.
+        caption_ratio = (
+            caption_rect.width
+            / max(
+                1.0,
+                page_w,
+            )
+        )
+
+        if caption_ratio >= 0.68:
+            crop_x0 = 12.0
+            crop_x1 = page_w - 12.0
+
+        else:
+            pad_x = max(
+                8.0,
+                caption_rect.width * 0.04,
+            )
+
+            crop_x0 = max(
+                12.0,
+                caption_rect.x0 - pad_x,
+            )
+
+            crop_x1 = min(
+                page_w - 12.0,
+                caption_rect.x1 + pad_x,
+            )
+
+        crop_bottom = (
+            caption_rect.y0 - 5.0
+        )
+
+        # Default: from top margin. Then move crop_top downward only if we find
+        # genuine article prose above the Figure in the same column.
+        crop_top = 12.0
+
+        page_dict = page.get_text(
+            "dict"
+        )
+
+        prose_bottoms = []
+
+        target_column = (
+            crop_x0,
+            0.0,
+            crop_x1,
+            crop_bottom,
+        )
+
+        for block in page_dict.get(
+            "blocks",
+            [],
+        ):
+            if block.get(
+                "type"
+            ) != 0:
+                continue
+
+            bbox = block.get(
+                "bbox"
+            )
+
+            if (
+                not bbox
+                or len(bbox) != 4
+            ):
+                continue
+
+            if float(
+                bbox[3]
+            ) >= crop_bottom - 8:
+                continue
+
+            if (
+                _horizontal_overlap_ratio(
+                    bbox,
+                    target_column,
+                )
+                < 0.50
+            ):
+                continue
+
+            pieces = []
+
+            for line in block.get(
+                "lines",
+                [],
+            ):
+                for span in line.get(
+                    "spans",
+                    [],
+                ):
+                    value = span.get(
+                        "text",
+                        "",
+                    )
+
+                    if value:
+                        pieces.append(
+                            str(value)
+                        )
+
+            text = " ".join(
+                pieces
+            )
+
+            # Avoid axis labels/panel letters and select real article prose only.
+            if not _looks_like_prose(
+                text
+            ):
+                continue
+
+            prose_bottoms.append(
+                float(
+                    bbox[3]
+                )
+            )
+
+        if prose_bottoms:
+            candidate_top = (
+                max(
+                    prose_bottoms
+                )
+                + 6.0
+            )
+
+            # Keep enough vertical room for a scientific Figure.
+            if (
+                crop_bottom
+                - candidate_top
+                >= 70.0
+            ):
+                crop_top = (
+                    candidate_top
+                )
+
+        rect = fitz.Rect(
+            crop_x0,
+            crop_top,
+            crop_x1,
+            crop_bottom,
+        ) & page.rect
+
+        if (
+            rect.width < 60
+            or rect.height < 70
+        ):
+            return None
+
+        pix = page.get_pixmap(
+            matrix=fitz.Matrix(
+                zoom,
+                zoom,
+            ),
+            clip=rect,
+            alpha=False,
+        )
+
+        target = (
+            cache_dir
+            / f"{key}_hybrid_caption.png"
+        )
+
+        pix.save(
+            str(target)
+        )
+
+        return target
+
+    except Exception:
+        return None
+
+    finally:
+        if doc is not None:
+            try:
+                doc.close()
+            except Exception:
+                pass
+
+
 def _extract_from_middle_json(
     *,
     middle_json: Dict,
@@ -418,6 +765,7 @@ def _extract_from_middle_json(
             )
 
             captions = []
+            caption_boxes = []
             body_boxes = []
 
             for block in blocks:
@@ -446,6 +794,15 @@ def _extract_from_middle_json(
                         captions.append(
                             text
                         )
+
+                        if block.get(
+                            "bbox"
+                        ):
+                            caption_boxes.append(
+                                block[
+                                    "bbox"
+                                ]
+                            )
 
                 elif block_type in {
                     "image_body",
@@ -511,14 +868,14 @@ def _extract_from_middle_json(
                 label
             )
 
-            # Most important change:
-            # use ALL image_body / line / span bboxes under the same
-            # level-1 MinerU Figure container.
             body_bbox = _union_bbox(
                 body_boxes
             )
 
-            # If body geometry is missing, use the level-1 image container bbox.
+            caption_bbox = _union_bbox(
+                caption_boxes
+            )
+
             if body_bbox is None:
                 body_bbox = para.get(
                     "bbox"
@@ -527,15 +884,104 @@ def _extract_from_middle_json(
             if body_bbox is None:
                 continue
 
-            rendered = _render_middle_bbox(
-                pdf_bytes=pdf_bytes,
-                page_idx=page_idx,
-                bbox=body_bbox,
-                page_size=page_size,
-                backend=backend,
-                cache_dir=cache_dir,
-                key=key,
+            panel_count = (
+                _panel_count_from_caption(
+                    caption
+                )
             )
+
+            body_width = _rect_width(
+                body_bbox
+            )
+
+            caption_width = _rect_width(
+                caption_bbox
+            )
+
+            # MinerU sometimes recognizes only one panel body from a multi-panel
+            # Figure. Detect that situation and ignore the incomplete body bbox.
+            suspicious_multi_panel = (
+                panel_count >= 3
+                and caption_bbox is not None
+                and caption_width > 0
+                and body_width
+                < caption_width * 0.72
+            )
+
+            rendered = None
+            asset_mode = None
+            selected_bbox = body_bbox
+
+            if (
+                suspicious_multi_panel
+                and caption_bbox is not None
+            ):
+                rendered = _caption_anchor_crop(
+                    pdf_bytes=pdf_bytes,
+                    page_idx=page_idx,
+                    caption_bbox=caption_bbox,
+                    page_size=page_size,
+                    backend=backend,
+                    cache_dir=cache_dir,
+                    key=key,
+                )
+
+                if rendered is not None:
+                    asset_mode = (
+                        "hybrid_caption_anchor_crop"
+                    )
+                    selected_bbox = (
+                        caption_bbox
+                    )
+
+            if rendered is None:
+                rendered = _render_middle_bbox(
+                    pdf_bytes=pdf_bytes,
+                    page_idx=page_idx,
+                    bbox=body_bbox,
+                    page_size=page_size,
+                    backend=backend,
+                    cache_dir=cache_dir,
+                    key=key,
+                )
+
+                if rendered is not None:
+                    asset_mode = (
+                        "mineru_body_bbox_union"
+                    )
+
+            # Final recovery: if the body result is implausibly narrow and we
+            # have a real Figure caption, prefer a caption-anchored crop anyway.
+            if (
+                caption_bbox is not None
+                and (
+                    rendered is None
+                    or (
+                        panel_count >= 3
+                        and caption_width > 0
+                        and body_width
+                        < caption_width * 0.85
+                    )
+                )
+            ):
+                hybrid = _caption_anchor_crop(
+                    pdf_bytes=pdf_bytes,
+                    page_idx=page_idx,
+                    caption_bbox=caption_bbox,
+                    page_size=page_size,
+                    backend=backend,
+                    cache_dir=cache_dir,
+                    key=key,
+                )
+
+                if hybrid is not None:
+                    rendered = hybrid
+                    asset_mode = (
+                        "hybrid_caption_anchor_crop"
+                    )
+                    selected_bbox = (
+                        caption_bbox
+                    )
 
             if rendered is None:
                 continue
@@ -550,12 +996,15 @@ def _extract_from_middle_json(
                 "image_path": str(
                     rendered
                 ),
-                "bbox": body_bbox,
+                "bbox": selected_bbox,
                 "engine": (
-                    "mineru_middle_json"
+                    "mineru_hybrid_v5"
                 ),
                 "asset_mode": (
-                    "union_all_image_body_bboxes"
+                    asset_mode
+                ),
+                "panel_count_detected": (
+                    panel_count
                 ),
                 "backend": backend,
                 "extractor_version": (
@@ -615,7 +1064,7 @@ def extract_figures_with_mineru(
     pdf_bytes: bytes,
     paper_hash: str,
     token: str,
-    cache_root: str = "figure_cache/mineru_middle_v3",
+    cache_root: str = "figure_cache/mineru_hybrid_v5",
     language: str = "en",
     force: bool = False,
 ) -> List[Dict]:
@@ -669,7 +1118,7 @@ def extract_figures_with_mineru(
                 and payload.get(
                     "engine"
                 )
-                == "mineru_middle_json"
+                == "mineru_hybrid_v5"
             ):
                 figures = payload.get(
                     "figures",
@@ -777,7 +1226,7 @@ def extract_figures_with_mineru(
         json.dumps(
             {
                 "engine": (
-                    "mineru_middle_json"
+                    "mineru_hybrid_v5"
                 ),
                 "extractor_version": (
                     MINERU_EXTRACTOR_VERSION

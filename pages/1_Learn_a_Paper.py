@@ -35,7 +35,7 @@ from mineru_figure_extractor import (
     mineru_available,
 )
 
-APP_VERSION = "v0.2.5.3-beta"
+APP_VERSION = "v0.2.5.4-beta"
 METHOD_PROFILE_FILE = Path("method_profiles.json")
 
 st.set_page_config(
@@ -676,7 +676,7 @@ m3.metric(
 mineru_token = get_mineru_token()
 
 mineru_state_key = (
-    "lal_mineru_figures:v4:"
+    "lal_mineru_figures:v5:"
     + active_hash()
 )
 
@@ -1473,8 +1473,8 @@ with tabs[4]:
     st.caption(
         L(
             lang,
-            "v0.2.5.3부터 MinerU의 `*_middle.json`, `middle.json`, `layout.json`을 모두 intermediate layout source로 인식합니다. Figure container geometry를 사용하고 PyMuPDF fallback도 유지됩니다.",
-            "From v0.2.5.3, Figure extraction accepts MinerU `*_middle.json`, `middle.json`, or `layout.json` as the intermediate layout source, with PyMuPDF fallback retained.",
+            "v0.2.5.4는 MinerU를 caption detector로 사용하고, multi-panel body bbox가 불완전하면 원본 PDF의 caption 위 전체 visual region을 자동 crop하는 hybrid mode를 사용합니다.",
+            "v0.2.5.4 uses MinerU as a semantic caption detector and automatically switches to a caption-anchored original-PDF crop when a multi-panel body bbox looks incomplete.",
         )
     )
 
@@ -1553,7 +1553,7 @@ with tabs[4]:
                     st.session_state[
                         mineru_state_key
                     ] = {
-                        "engine": "mineru_middle_json",
+                        "engine": "mineru_hybrid_v5",
                         "figures": figures,
                     }
 
@@ -1645,7 +1645,7 @@ with tabs[4]:
                         st.session_state[
                             mineru_state_key
                         ] = {
-                            "engine": "mineru_middle_json",
+                            "engine": "mineru_hybrid_v5",
                             "figures": figures,
                         }
 

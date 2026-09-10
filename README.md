@@ -2,7 +2,7 @@
 
 > Learn a paper, understand the experiment, and keep learning without losing context.
 
-**Current version: `v0.2.5.3-beta`**
+**Current version: `v0.2.5.4-beta`**
 
 LALSTUDY is an experimental scientific-paper learning platform that connects two workflows:
 
@@ -390,3 +390,27 @@ as the MinerU intermediate layout artifact.
 If none are found, the UI error now reports which JSON files were actually
 present in the extracted MinerU result, making future API-format changes easier
 to debug.
+
+
+## v0.2.5.4 — Hybrid caption-anchor Figure recovery
+
+Some scientific PDFs are parsed by MinerU with only one image-body span from a
+multi-panel Figure. When the Figure caption clearly refers to multiple panels
+but the detected visual body is much narrower than the caption, LALSTUDY now
+switches to a hybrid recovery path:
+
+```text
+MinerU semantic caption detection
+              ↓
+real Fig. N caption bbox
+              ↓
+original PDF page geometry
+              ↓
+same-column visual region immediately above caption
+              ↓
+whole-Figure crop
+```
+
+MinerU therefore decides *which block is the true Figure caption*, while
+PyMuPDF renders the actual page region. This avoids relying on incomplete
+panel-level image objects.

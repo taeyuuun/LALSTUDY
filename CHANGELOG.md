@@ -2,6 +2,22 @@
 
 All notable LALSTUDY updates will be recorded here.
 
+## [0.2.5.4-beta] - 2026-09-11
+
+### Fixed
+- Added hybrid recovery for multi-panel Figures when MinerU returns only a narrow panel body
+- Uses real MinerU Figure captions as semantic anchors
+- Crops the original PDF region immediately above the caption in the same journal column
+- Detects multi-panel captions and compares Figure-body width against caption width
+- Versioned Figure session/cache state to v5
+
+### Extraction modes
+- `mineru_body_bbox_union`
+- `hybrid_caption_anchor_crop`
+- existing PyMuPDF fallback
+
+All notable LALSTUDY updates will be recorded here.
+
 ## [0.2.5.3-beta] - 2026-09-11
 
 ### Fixed
