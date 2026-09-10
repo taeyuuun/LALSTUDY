@@ -2,7 +2,7 @@
 
 > Learn a paper, understand the experiment, and keep learning without losing context.
 
-**Current version: `v0.2.4-beta`**
+**Current version: `v0.2.5-beta`**
 
 LALSTUDY is an experimental scientific-paper learning platform that connects two workflows:
 
@@ -273,3 +273,52 @@ Users no longer need to jump back to the paper PDF just to see the referenced Fi
 ### Current limitation
 Figure extraction is heuristic. It works best when figure captions are clearly detectable and
 the figure appears immediately above its caption. Complex layouts may produce imperfect crops.
+
+
+## v0.2.4.1 — Figure extractor v2
+
+The first Figure-in-Study extractor matched any text block containing a Figure
+reference. This caused Results paragraphs such as `(Fig. 2A)` to be mistaken
+for captions and could create duplicate or text-heavy crops.
+
+Extractor v2:
+- requires the text block itself to start with `Fig. N` / `Figure N`
+- deduplicates one crop per canonical main Figure
+- uses the caption's column width rather than the whole page
+- uses nearby body prose as an upper crop boundary
+- uses embedded raster-image geometry as an additional bound when available
+- writes to `figure_cache/study_figures_v2/`, so old bad crops are not reused
+
+The extraction remains deterministic and does not require an additional AI call.
+
+
+## v0.2.5 — MinerU Precision Figure benchmark
+
+LALSTUDY now supports a MinerU-first Figure extraction path.
+
+```text
+Uploaded PDF
+↓
+MinerU Precision / VLM
+↓
+structured image/chart block
+├─ img_path
+├─ image_caption
+├─ page_idx
+└─ bbox
+↓
+canonical Fig. N matching
+↓
+Figure image + source caption + Gemini interpretation
+```
+
+Server configuration:
+
+```toml
+MINERU_TOKEN = "..."
+```
+
+The token is server-side and should never be committed to Git.
+
+The existing PyMuPDF extractor remains available as a fallback while MinerU is
+benchmarked against real scientific PDFs.

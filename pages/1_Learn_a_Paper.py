@@ -30,7 +30,12 @@ from figure_in_study import (
     pymupdf_available,
 )
 
-APP_VERSION = "v0.2.4-beta"
+from mineru_figure_extractor import (
+    extract_figures_with_mineru,
+    mineru_available,
+)
+
+APP_VERSION = "v0.2.5-beta"
 METHOD_PROFILE_FILE = Path("method_profiles.json")
 
 st.set_page_config(
@@ -229,6 +234,26 @@ def get_server_key():
 
     return os.getenv(
         "GEMINI_API_KEY",
+        "",
+    ).strip()
+
+
+def get_mineru_token():
+    try:
+        if "MINERU_TOKEN" in st.secrets:
+            value = str(
+                st.secrets[
+                    "MINERU_TOKEN"
+                ]
+            ).strip()
+
+            if value:
+                return value
+    except Exception:
+        pass
+
+    return os.getenv(
+        "MINERU_TOKEN",
         "",
     ).strip()
 
@@ -648,22 +673,42 @@ m3.metric(
 )
 
 
-if pymupdf_available():
-    try:
-        extracted_study_figures = get_study_figures(
-            pdf_bytes,
-            active_hash(),
+mineru_token = get_mineru_token()
+
+mineru_state_key = (
+    "lal_mineru_figures:"
+    + active_hash()
+)
+
+mineru_record = st.session_state.get(
+    mineru_state_key
+)
+
+if mineru_record:
+    extracted_study_figures = (
+        mineru_record.get(
+            "figures",
+            [],
         )
-    except Exception:
-        extracted_study_figures = []
+    )
+    figure_extraction_engine = (
+        mineru_record.get(
+            "engine",
+            "mineru_precision_vlm",
+        )
+    )
 else:
+    # We no longer run the heuristic extractor automatically.
+    # It remains available as a fallback after a MinerU failure or when
+    # the user explicitly chooses fallback extraction.
     extracted_study_figures = []
+    figure_extraction_engine = "not_prepared"
 
 st.caption(
     L(
         lang,
-        f"Study figure crops: {len(extracted_study_figures)}",
-        f"Study figure crops: {len(extracted_study_figures)}",
+        f"Figure extraction: {figure_extraction_engine} · {len(extracted_study_figures)} figures",
+        f"Figure extraction: {figure_extraction_engine} · {len(extracted_study_figures)} figures",
     )
 )
 
@@ -1428,66 +1473,231 @@ with tabs[4]:
     st.caption(
         L(
             lang,
-            "실제 study Figure crop과 AI 해석을 함께 보여줍니다. Figure 이미지는 PDF에서 로컬로 추출하므로 추가 AI 호출이 필요 없습니다.",
-            "Show the actual study figure crop together with the AI interpretation. Figure images are extracted locally from the PDF and do not require an extra AI call.",
+            "v0.2.5부터 Figure crop은 MinerU Precision/VLM을 우선 사용하고, 실패 시 PyMuPDF heuristic으로 fallback할 수 있습니다.",
+            "From v0.2.5, Figure crops prefer MinerU Precision/VLM, with a PyMuPDF heuristic fallback.",
+        )
+    )
+
+    # --------------------------------------------------------
+    # EXTRACTION ENGINE STATUS
+    # --------------------------------------------------------
+
+    status_cols = st.columns(3)
+
+    with status_cols[0]:
+        st.metric(
+            "MinerU SDK",
+            "Ready"
+            if mineru_available()
+            else "Missing",
+        )
+
+    with status_cols[1]:
+        st.metric(
+            "MinerU token",
+            "Connected"
+            if mineru_token
+            else "Missing",
+        )
+
+    with status_cols[2]:
+        st.metric(
+            L(
+                lang,
+                "추출된 Figure",
+                "Extracted figures",
+            ),
+            len(
+                extracted_study_figures
+            ),
+        )
+
+    if extracted_study_figures:
+        st.success(
+            L(
+                lang,
+                f"Figure engine: {figure_extraction_engine}",
+                f"Figure engine: {figure_extraction_engine}",
+            )
+        )
+
+        with st.expander(
+            L(
+                lang,
+                "🔎 추출 결과 확인",
+                "🔎 Inspect extraction",
+            ),
+            expanded=False,
+        ):
+            for item in (
+                extracted_study_figures
+            ):
+                st.markdown(
+                    f"### {item.get('figure_label','Figure')}"
+                )
+
+                st.caption(
+                    f"page {item.get('page_number','?')} · "
+                    f"{item.get('engine', figure_extraction_engine)}"
+                )
+
+                st.image(
+                    item.get(
+                        "image_path"
+                    ),
+                    use_container_width=True,
+                )
+
+                st.caption(
+                    item.get(
+                        "caption",
+                        "",
+                    )
+                )
+
+    else:
+        st.info(
+            L(
+                lang,
+                "아직 Figure extraction을 실행하지 않았습니다.",
+                "Figure extraction has not been run yet.",
+            )
+        )
+
+        if mineru_available() and mineru_token:
+            if st.button(
+                L(
+                    lang,
+                    "✨ MinerU Precision으로 Figure 추출",
+                    "✨ Extract Figures with MinerU Precision",
+                ),
+                type="primary",
+                use_container_width=True,
+                key="run_mineru_figures",
+            ):
+                with st.spinner(
+                    L(
+                        lang,
+                        "MinerU VLM이 PDF layout을 분석하고 Figure 영역을 추출 중입니다. 첫 실행은 시간이 걸릴 수 있습니다...",
+                        "MinerU VLM is analyzing the PDF layout and extracting Figure regions. The first run may take a while...",
+                    )
+                ):
+                    try:
+                        figures = (
+                            extract_figures_with_mineru(
+                                pdf_bytes=pdf_bytes,
+                                paper_hash=active_hash(),
+                                token=mineru_token,
+                                language="en",
+                            )
+                        )
+
+                        if not figures:
+                            raise RuntimeError(
+                                "MinerU completed parsing but no main Figure captions/images were matched."
+                            )
+
+                        st.session_state[
+                            mineru_state_key
+                        ] = {
+                            "engine": "mineru_precision_vlm",
+                            "figures": figures,
+                        }
+
+                        st.rerun()
+
+                    except Exception as exc:
+                        st.error(
+                            L(
+                                lang,
+                                f"MinerU extraction 실패: {exc}",
+                                f"MinerU extraction failed: {exc}",
+                            )
+                        )
+
+        elif not mineru_token:
+            st.warning(
+                L(
+                    lang,
+                    "MinerU Precision을 쓰려면 서버에 `MINERU_TOKEN`을 한 번 설정해야 합니다. 그 전에는 아래 fallback을 사용할 수 있습니다.",
+                    "MinerU Precision needs a server-side `MINERU_TOKEN`. Until then, you can use the fallback below.",
+                )
+            )
+
+        if st.button(
+            L(
+                lang,
+                "↩ PyMuPDF fallback으로 추출",
+                "↩ Extract with PyMuPDF fallback",
+            ),
+            use_container_width=True,
+            key="run_fallback_figures",
+        ):
+            with st.spinner(
+                L(
+                    lang,
+                    "Fallback Figure extraction 중...",
+                    "Running fallback Figure extraction...",
+                )
+            ):
+                try:
+                    figures = get_study_figures(
+                        pdf_bytes,
+                        active_hash(),
+                    )
+
+                    st.session_state[
+                        mineru_state_key
+                    ] = {
+                        "engine": "pymupdf_fallback_v2",
+                        "figures": figures,
+                    }
+
+                    st.rerun()
+
+                except Exception as exc:
+                    st.error(
+                        f"Fallback extraction failed: {exc}"
+                    )
+
+    # --------------------------------------------------------
+    # AI FIGURE INTERPRETATION
+    # --------------------------------------------------------
+
+    st.divider()
+    st.subheader(
+        L(
+            lang,
+            "AI Figure Interpretation",
+            "AI Figure Interpretation",
         )
     )
 
     if not extracted_study_figures:
-        if not pymupdf_available():
-            st.warning(
-                L(
-                    lang,
-                    "PyMuPDF가 설치되지 않아 study Figure를 추출할 수 없습니다. `python -m pip install -r requirements.txt` 후 다시 실행하세요.",
-                    "PyMuPDF is not installed, so study figures cannot be extracted. Run `python -m pip install -r requirements.txt` and restart.",
-                )
-            )
-        else:
-            st.info(
-                L(
-                    lang,
-                    "PDF에서 자동 추출된 Figure crop이 아직 없습니다. 캡션 구조가 복잡한 PDF에서는 추출이 불완전할 수 있습니다.",
-                    "No automatically extracted study figure crops were found. Extraction can be incomplete for PDFs with complex caption layouts.",
-                )
-            )
-    else:
-        with st.expander(
+        st.caption(
             L(
                 lang,
-                "📚 PDF에서 추출된 Figure 목록 보기",
-                "📚 View extracted study figures from PDF",
-            ),
-            expanded=False,
-        ):
-            for item in extracted_study_figures:
-                st.markdown(
-                    f"**{item.get('figure_label','Figure')}** · "
-                    f"{L(lang,'page','page')} {item.get('page_number','?')}"
-                )
-                try:
-                    st.image(
-                        item.get("image_path"),
-                        caption=item.get("caption", ""),
-                        use_container_width=True,
-                    )
-                except Exception:
-                    st.caption(item.get("image_path", ""))
+                "먼저 위에서 Figure 이미지를 준비하는 것을 권장합니다.",
+                "Prepare the Figure images above first.",
+            )
+        )
 
     if not figures_record:
         if st.button(
             L(
                 lang,
-                "🖼 Figure 분석 생성",
-                "🖼 Generate Figure analysis",
+                "🧠 Figure 해석 생성",
+                "🧠 Generate Figure interpretation",
             ),
             type="primary",
+            use_container_width=True,
             key="generate_figures",
         ):
             with st.spinner(
                 L(
                     lang,
-                    "PDF의 Figure와 panel을 읽는 중...",
-                    "Reading Figures and panels from the PDF...",
+                    "Gemini가 논문의 Figure 논리를 분석 중...",
+                    "Gemini is analyzing the Figure logic...",
                 )
             ):
                 try:
@@ -1531,19 +1741,25 @@ with tabs[4]:
         ):
             matching_item = find_matching_figure(
                 extracted_study_figures,
-                figure.get("figure_label", ""),
+                figure.get(
+                    "figure_label",
+                    "",
+                ),
             )
 
             with st.expander(
                 f"{figure.get('figure_label','Figure')} — "
-                f"{figure.get('role_in_story','')}"
+                f"{figure.get('role_in_story','')}",
+                expanded=False,
             ):
                 if matching_item:
                     st.image(
-                        matching_item.get("image_path"),
+                        matching_item.get(
+                            "image_path"
+                        ),
                         caption=(
                             f"{matching_item.get('figure_label','Figure')} · "
-                            f"{L(lang,'page','page')} {matching_item.get('page_number','?')}"
+                            f"page {matching_item.get('page_number','?')}"
                         ),
                         use_container_width=True,
                     )
@@ -1551,8 +1767,8 @@ with tabs[4]:
                     with st.expander(
                         L(
                             lang,
-                            "원문 caption 보기",
-                            "View source caption",
+                            "원문 caption",
+                            "Source caption",
                         ),
                         expanded=False,
                     ):
@@ -1562,18 +1778,20 @@ with tabs[4]:
                                 "",
                             )
                         )
+
                 elif extracted_study_figures:
-                    st.info(
+                    st.warning(
                         L(
                             lang,
-                            "해당 Figure label과 자동 추출 crop을 직접 매칭하지 못했습니다. 위의 '추출된 Figure 목록'에서 수동 확인할 수 있습니다.",
-                            "Could not directly match this Figure label to an extracted crop. You can still check the extracted figure list above.",
+                            "AI Figure label과 추출 이미지의 자동 매칭에 실패했습니다.",
+                            "Could not automatically match the AI Figure label to an extracted image.",
                         )
                     )
 
                 st.markdown(
                     f"### {L(lang,'❓ 핵심 질문','❓ Main question')}"
                 )
+
                 st.write(
                     figure.get(
                         "main_question",
@@ -1588,11 +1806,11 @@ with tabs[4]:
 
                 if panels:
                     labels = [
-                        p.get(
+                        panel.get(
                             "panel_label",
                             f"Panel {i+1}",
                         )
-                        for i, p in enumerate(
+                        for i, panel in enumerate(
                             panels
                         )
                     ]
@@ -1605,7 +1823,9 @@ with tabs[4]:
                         panels
                     ):
                         with panel_tabs[i]:
-                            c1, c2 = st.columns(2)
+                            c1, c2 = st.columns(
+                                2
+                            )
 
                             with c1:
                                 st.markdown(
@@ -1663,7 +1883,9 @@ with tabs[4]:
 
                 st.divider()
 
-                c1, c2 = st.columns(2)
+                c1, c2 = st.columns(
+                    2
+                )
 
                 with c1:
                     st.markdown(

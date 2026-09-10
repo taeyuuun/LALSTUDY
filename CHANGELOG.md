@@ -2,6 +2,40 @@
 
 All notable LALSTUDY updates will be recorded here.
 
+## [0.2.5-beta] - 2026-09-11
+
+### Added
+- MinerU Open API SDK integration
+- Precision VLM Figure extraction from local uploaded PDFs
+- Server-side `MINERU_TOKEN`
+- MinerU Figure cache by paper hash
+- Figure extraction engine diagnostics
+- PyMuPDF v2 fallback button
+
+### Architecture
+- LALSTUDY now consumes MinerU `content_list` image/chart records
+- Figure identity is derived from actual caption text
+- Body-text Figure references are not considered extraction targets
+- AI interpretation remains separate from visual extraction
+
+All notable LALSTUDY updates will be recorded here.
+
+## [0.2.4.1-beta] - 2026-09-11
+
+### Fixed
+- Body paragraphs that merely mention `(Fig. N)` are no longer detected as Figure captions
+- Main Figures are deduplicated by canonical Figure label
+- Single-column Figures no longer crop the opposite article-text column
+- Old v1 Figure extraction cache is bypassed automatically
+
+### Improved
+- Caption-column-aware crop bounds
+- Nearby prose boundary detection
+- Embedded raster-image bounding-box refinement
+- Reduced duplicate Figure display in the Learn a Paper UI
+
+All notable LALSTUDY updates will be recorded here.
+
 ## [0.2.4-beta] - 2026-09-11
 
 ### Added
