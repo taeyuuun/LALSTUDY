@@ -2,6 +2,21 @@
 
 All notable LALSTUDY updates will be recorded here.
 
+## [0.2.5.2-beta] - 2026-09-11
+
+### Fixed
+- Replaced simplified MinerU content-list Figure geometry with `middle.json`
+- Multi-panel Figure crops now union all image-body / line / span bboxes inside the Figure container
+- Versioned the Streamlit MinerU session cache to prevent old panel-only results from being reused
+- Added explicit Force Re-extract control
+
+### Architecture
+- MinerU provides semantic Figure grouping
+- LALSTUDY renders the grouped body region directly from the original PDF
+- `img_path` is no longer the Figure-boundary authority
+
+All notable LALSTUDY updates will be recorded here.
+
 ## [0.2.5.1-beta] - 2026-09-11
 
 ### Fixed

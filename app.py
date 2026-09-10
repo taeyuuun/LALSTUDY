@@ -1,7 +1,7 @@
 import streamlit as st
 from i18n import language_selector, L
 
-APP_VERSION = "v0.2.5.1-beta"
+APP_VERSION = "v0.2.5.2-beta"
 
 st.set_page_config(page_title="LALSTUDY", page_icon="🧬", layout="wide")
 lang = language_selector()

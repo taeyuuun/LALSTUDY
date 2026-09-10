@@ -35,7 +35,7 @@ from mineru_figure_extractor import (
     mineru_available,
 )
 
-APP_VERSION = "v0.2.5.1-beta"
+APP_VERSION = "v0.2.5.2-beta"
 METHOD_PROFILE_FILE = Path("method_profiles.json")
 
 st.set_page_config(
@@ -676,7 +676,7 @@ m3.metric(
 mineru_token = get_mineru_token()
 
 mineru_state_key = (
-    "lal_mineru_figures:"
+    "lal_mineru_figures:v3:"
     + active_hash()
 )
 
@@ -1473,8 +1473,8 @@ with tabs[4]:
     st.caption(
         L(
             lang,
-            "v0.2.5부터 Figure crop은 MinerU Precision/VLM을 우선 사용하고, 실패 시 PyMuPDF heuristic으로 fallback할 수 있습니다.",
-            "From v0.2.5, Figure crops prefer MinerU Precision/VLM, with a PyMuPDF heuristic fallback.",
+            "v0.2.5.2부터 MinerU의 simplified img_path가 아니라 middle.json의 전체 Figure container 구조를 사용합니다. 실패 시 PyMuPDF fallback도 유지됩니다.",
+            "From v0.2.5.2, Figure extraction uses MinerU middle.json Figure-container geometry instead of the simplified img_path, with PyMuPDF fallback retained.",
         )
     )
 
@@ -1520,6 +1520,49 @@ with tabs[4]:
                 f"Figure engine: {figure_extraction_engine}",
             )
         )
+
+        if (
+            mineru_available()
+            and mineru_token
+            and st.button(
+                L(
+                    lang,
+                    "🔄 MinerU Figure 강제 재추출",
+                    "🔄 Force re-extract MinerU Figures",
+                ),
+                use_container_width=True,
+                key="force_reextract_mineru_v3",
+            )
+        ):
+            with st.spinner(
+                L(
+                    lang,
+                    "기존 Figure cache를 버리고 middle.json 기반으로 다시 추출 중...",
+                    "Discarding old Figure cache and re-extracting from MinerU middle.json...",
+                )
+            ):
+                try:
+                    figures = extract_figures_with_mineru(
+                        pdf_bytes=pdf_bytes,
+                        paper_hash=active_hash(),
+                        token=mineru_token,
+                        language="en",
+                        force=True,
+                    )
+
+                    st.session_state[
+                        mineru_state_key
+                    ] = {
+                        "engine": "mineru_middle_json",
+                        "figures": figures,
+                    }
+
+                    st.rerun()
+
+                except Exception as exc:
+                    st.error(
+                        f"Forced MinerU extraction failed: {exc}"
+                    )
 
         with st.expander(
             L(
@@ -1590,6 +1633,7 @@ with tabs[4]:
                                 paper_hash=active_hash(),
                                 token=mineru_token,
                                 language="en",
+                                force=False,
                             )
                         )
 
@@ -1601,7 +1645,7 @@ with tabs[4]:
                         st.session_state[
                             mineru_state_key
                         ] = {
-                            "engine": "mineru_precision_vlm",
+                            "engine": "mineru_middle_json",
                             "figures": figures,
                         }
 

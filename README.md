@@ -2,7 +2,7 @@
 
 > Learn a paper, understand the experiment, and keep learning without losing context.
 
-**Current version: `v0.2.5.1-beta`**
+**Current version: `v0.2.5.2-beta`**
 
 LALSTUDY is an experimental scientific-paper learning platform that connects two workflows:
 
@@ -345,3 +345,27 @@ whole Figure crop
 ```
 
 `img_path` remains only as a fallback when bbox rendering is unavailable.
+
+
+## v0.2.5.2 — MinerU middle.json Figure containers
+
+The previous MinerU integration still depended on simplified `content_list`
+geometry. Multi-panel scientific Figures can be flattened in that representation.
+
+v0.2.5.2 reads MinerU's richer `middle.json` hierarchy:
+
+```text
+image / chart container
+├─ image_body / chart_body
+│  ├─ line
+│  │  └─ span bbox
+│  └─ ...
+├─ image_caption
+└─ image_footnote
+```
+
+LALSTUDY unions all body / line / span bounding boxes inside the same Figure
+container and renders that full region from the original uploaded PDF.
+
+The Streamlit session cache key is versioned (`v3`) and a Force Re-extract
+button is available so an old panel-only crop cannot be silently reused.
