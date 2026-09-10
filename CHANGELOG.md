@@ -2,6 +2,18 @@
 
 All notable LALSTUDY updates will be recorded here.
 
+## [0.2.5.1-beta] - 2026-09-11
+
+### Fixed
+- Multi-panel Figures no longer rely primarily on MinerU `img_path`
+- MinerU Figure block `bbox` + `page_idx` are now used to render directly from the original PDF
+- Prevents cases where only the last panel (for example panel H) is shown for an A-H Figure
+
+### Fallback
+- MinerU `img_path` is retained only when bbox-based PDF rendering is unavailable
+
+All notable LALSTUDY updates will be recorded here.
+
 ## [0.2.5-beta] - 2026-09-11
 
 ### Added

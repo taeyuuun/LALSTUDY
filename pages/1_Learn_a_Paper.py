@@ -35,7 +35,7 @@ from mineru_figure_extractor import (
     mineru_available,
 )
 
-APP_VERSION = "v0.2.5-beta"
+APP_VERSION = "v0.2.5.1-beta"
 METHOD_PROFILE_FILE = Path("method_profiles.json")
 
 st.set_page_config(
@@ -1538,7 +1538,8 @@ with tabs[4]:
 
                 st.caption(
                     f"page {item.get('page_number','?')} · "
-                    f"{item.get('engine', figure_extraction_engine)}"
+                    f"{item.get('engine', figure_extraction_engine)} · "
+                    f"{item.get('asset_mode','')}"
                 )
 
                 st.image(

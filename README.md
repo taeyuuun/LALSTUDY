@@ -2,7 +2,7 @@
 
 > Learn a paper, understand the experiment, and keep learning without losing context.
 
-**Current version: `v0.2.5-beta`**
+**Current version: `v0.2.5.1-beta`**
 
 LALSTUDY is an experimental scientific-paper learning platform that connects two workflows:
 
@@ -322,3 +322,26 @@ The token is server-side and should never be committed to Git.
 
 The existing PyMuPDF extractor remains available as a fallback while MinerU is
 benchmarked against real scientific PDFs.
+
+
+## v0.2.5.1 — MinerU bbox PDF rendering
+
+MinerU `img_path` is no longer the primary visual source for Figure-in-Study.
+
+For multi-panel scientific Figures, a simplified MinerU image record can resolve
+to only one underlying image span. LALSTUDY now uses MinerU's Figure-level
+`bbox` and `page_idx` to render the corresponding rectangle directly from the
+original PDF at high resolution.
+
+```text
+MinerU
+  └─ Figure content block bbox + page_idx
+             ↓
+Original uploaded PDF
+             ↓
+PyMuPDF high-resolution bbox render
+             ↓
+whole Figure crop
+```
+
+`img_path` remains only as a fallback when bbox rendering is unavailable.

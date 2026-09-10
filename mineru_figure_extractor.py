@@ -11,8 +11,13 @@ try:
 except Exception:
     MinerU = None
 
+try:
+    import fitz  # PyMuPDF
+except Exception:
+    fitz = None
 
-MINERU_EXTRACTOR_VERSION = "1"
+
+MINERU_EXTRACTOR_VERSION = "2"
 
 CAPTION_RE = re.compile(
     r"^\s*(?:fig(?:ure)?\.?\s*)(\d+[A-Za-z]?)\s*[.:]?\s*",
@@ -358,6 +363,100 @@ def _copy_asset(
     return target
 
 
+
+def _render_bbox_from_pdf(
+    *,
+    pdf_bytes: bytes,
+    page_idx: int,
+    bbox,
+    cache_dir: Path,
+    key: str,
+    zoom: float = 2.4,
+) -> Optional[Path]:
+    """
+    Render the ORIGINAL PDF page using MinerU's content-block bbox.
+
+    MinerU content_list bbox uses normalized 0..1000 coordinates.
+    This avoids relying on img_path, which can represent only one image span
+    from a multi-panel Figure.
+    """
+    if fitz is None:
+        return None
+
+    if (
+        not isinstance(bbox, (list, tuple))
+        or len(bbox) != 4
+    ):
+        return None
+
+    try:
+        doc = fitz.open(
+            stream=pdf_bytes,
+            filetype="pdf",
+        )
+
+        if (
+            page_idx < 0
+            or page_idx >= len(doc)
+        ):
+            doc.close()
+            return None
+
+        page = doc[page_idx]
+
+        x0, y0, x1, y1 = [
+            float(v)
+            for v in bbox
+        ]
+
+        # content_list coordinates are normalized to 0-1000.
+        rect = fitz.Rect(
+            x0 / 1000.0 * page.rect.width,
+            y0 / 1000.0 * page.rect.height,
+            x1 / 1000.0 * page.rect.width,
+            y1 / 1000.0 * page.rect.height,
+        )
+
+        rect = rect & page.rect
+
+        if (
+            rect.width < 40
+            or rect.height < 40
+        ):
+            doc.close()
+            return None
+
+        pix = page.get_pixmap(
+            matrix=fitz.Matrix(
+                zoom,
+                zoom,
+            ),
+            clip=rect,
+            alpha=False,
+        )
+
+        target = (
+            cache_dir
+            / f"{key}_bbox.png"
+        )
+
+        pix.save(
+            str(target)
+        )
+
+        doc.close()
+
+        return target
+
+    except Exception:
+        try:
+            doc.close()
+        except Exception:
+            pass
+
+        return None
+
+
 def extract_figures_with_mineru(
     *,
     pdf_bytes: bytes,
@@ -508,39 +607,71 @@ def extract_figures_with_mineru(
                 label
             )
 
-            asset = _resolve_asset_path(
-                output_dir,
-                img_path,
+            page_idx = int(
+                entry.get(
+                    "page_idx",
+                    0,
+                )
             )
 
-            if asset is None:
-                continue
-
-            copied = _copy_asset(
-                asset,
-                cache_dir,
-                key,
+            block_bbox = entry.get(
+                "bbox"
             )
+
+            # PRIMARY:
+            # Use MinerU to locate the WHOLE image content block,
+            # then render that region from the original PDF.
+            #
+            # Do NOT trust content_list img_path as the primary Figure asset:
+            # multi-panel figures may contain multiple image spans and the
+            # simplified img_path can point to only one panel.
+            rendered = _render_bbox_from_pdf(
+                pdf_bytes=pdf_bytes,
+                page_idx=page_idx,
+                bbox=block_bbox,
+                cache_dir=cache_dir,
+                key=key,
+            )
+
+            extraction_asset_mode = (
+                "mineru_bbox_pdf_render"
+            )
+
+            # FALLBACK:
+            # If bbox rendering is impossible, keep the old MinerU asset path.
+            if rendered is None:
+                asset = _resolve_asset_path(
+                    output_dir,
+                    img_path,
+                )
+
+                if asset is None:
+                    continue
+
+                rendered = _copy_asset(
+                    asset,
+                    cache_dir,
+                    key,
+                )
+
+                extraction_asset_mode = (
+                    "mineru_img_path_fallback"
+                )
 
             candidate = {
                 "figure_label": label,
                 "figure_key": key,
-                "page_number": int(
-                    entry.get(
-                        "page_idx",
-                        0,
-                    )
-                )
-                + 1,
+                "page_number": page_idx + 1,
                 "caption": caption,
                 "image_path": str(
-                    copied
+                    rendered
                 ),
-                "bbox": entry.get(
-                    "bbox"
-                ),
+                "bbox": block_bbox,
                 "engine": (
                     "mineru_precision_vlm"
+                ),
+                "asset_mode": (
+                    extraction_asset_mode
                 ),
                 "extractor_version": (
                     MINERU_EXTRACTOR_VERSION
