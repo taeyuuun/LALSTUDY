@@ -35,7 +35,7 @@ from mineru_figure_extractor import (
     mineru_available,
 )
 
-APP_VERSION = "v0.2.5.4-beta"
+APP_VERSION = "v0.2.5.5-beta"
 METHOD_PROFILE_FILE = Path("method_profiles.json")
 
 st.set_page_config(
@@ -676,7 +676,7 @@ m3.metric(
 mineru_token = get_mineru_token()
 
 mineru_state_key = (
-    "lal_mineru_figures:v5:"
+    "lal_mineru_figures:v6:"
     + active_hash()
 )
 
@@ -1473,8 +1473,8 @@ with tabs[4]:
     st.caption(
         L(
             lang,
-            "v0.2.5.4는 MinerU를 caption detector로 사용하고, multi-panel body bbox가 불완전하면 원본 PDF의 caption 위 전체 visual region을 자동 crop하는 hybrid mode를 사용합니다.",
-            "v0.2.5.4 uses MinerU as a semantic caption detector and automatically switches to a caption-anchored original-PDF crop when a multi-panel body bbox looks incomplete.",
+            "v0.2.5.5는 MinerU의 Figure label을 원본 PDF에서 다시 `Fig. N.` caption에 re-anchor한 뒤, 그 실제 page/column을 기준으로 Figure를 crop합니다.",
+            "v0.2.5.5 re-anchors each MinerU Figure label to the real `Fig. N.` caption in the original PDF, then crops from that source page and column.",
         )
     )
 
@@ -1553,7 +1553,7 @@ with tabs[4]:
                     st.session_state[
                         mineru_state_key
                     ] = {
-                        "engine": "mineru_hybrid_v5",
+                        "engine": "mineru_original_anchor_v6",
                         "figures": figures,
                     }
 
@@ -1645,7 +1645,7 @@ with tabs[4]:
                         st.session_state[
                             mineru_state_key
                         ] = {
-                            "engine": "mineru_hybrid_v5",
+                            "engine": "mineru_original_anchor_v6",
                             "figures": figures,
                         }
 

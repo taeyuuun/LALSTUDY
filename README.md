@@ -2,7 +2,7 @@
 
 > Learn a paper, understand the experiment, and keep learning without losing context.
 
-**Current version: `v0.2.5.4-beta`**
+**Current version: `v0.2.5.5-beta`**
 
 LALSTUDY is an experimental scientific-paper learning platform that connects two workflows:
 
@@ -414,3 +414,28 @@ whole-Figure crop
 MinerU therefore decides *which block is the true Figure caption*, while
 PyMuPDF renders the actual page region. This avoids relying on incomplete
 panel-level image objects.
+
+
+## v0.2.5.5 — Original-PDF caption re-anchoring
+
+MinerU is now used primarily for semantic Figure identity.
+
+For every `Fig. N`, LALSTUDY searches the original uploaded PDF text layer for
+the actual caption block beginning with `Fig. N` / `Figure N`.
+
+That original source page and bbox become the geometric authority:
+
+```text
+MinerU semantic Figure label
+           ↓
+search original PDF for real "Fig. N." caption
+           ↓
+actual PDF page + caption bbox
+           ↓
+same-column visual region above caption
+           ↓
+whole Figure crop
+```
+
+This removes MinerU page-index / coordinate ambiguity and fixes neighbor-Figure
+misassociation such as a Fig. 7 card showing a Fig. 6 panel.

@@ -2,6 +2,21 @@
 
 All notable LALSTUDY updates will be recorded here.
 
+## [0.2.5.5-beta] - 2026-09-11
+
+### Fixed
+- Re-anchors MinerU Figure labels to the actual caption block in the original PDF
+- Original PDF page number and caption bbox are now authoritative for Figure cropping
+- Fixes isolated neighbor-Figure misassociation (for example Fig. 7 displaying Fig. 6 E/F)
+- Versioned Figure state/cache to v6
+
+### Extraction priority
+1. Original-PDF caption anchor
+2. MinerU caption anchor fallback
+3. MinerU body bbox fallback
+
+All notable LALSTUDY updates will be recorded here.
+
 ## [0.2.5.4-beta] - 2026-09-11
 
 ### Fixed

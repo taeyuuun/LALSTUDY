@@ -17,7 +17,7 @@ except Exception:
     fitz = None
 
 
-MINERU_EXTRACTOR_VERSION = "5"
+MINERU_EXTRACTOR_VERSION = "6"
 
 CAPTION_RE = re.compile(
     r"^\s*(?:fig(?:ure)?\.?\s*)(\d+[A-Za-z]?)\s*[.:]?\s*",
@@ -693,6 +693,395 @@ def _caption_anchor_crop(
                 pass
 
 
+
+def _pdf_block_text(block: Dict) -> str:
+    parts = []
+
+    for line in block.get(
+        "lines",
+        [],
+    ):
+        for span in line.get(
+            "spans",
+            [],
+        ):
+            value = span.get(
+                "text",
+                "",
+            )
+
+            if value:
+                parts.append(
+                    str(value)
+                )
+
+    return " ".join(
+        parts
+    ).strip()
+
+
+def _find_original_pdf_caption_anchor(
+    *,
+    pdf_bytes: bytes,
+    figure_label: str,
+):
+    """
+    Re-anchor a Figure to the ORIGINAL PDF text layer.
+
+    MinerU may correctly identify the semantic Figure number but associate
+    an incomplete/wrong page geometry. We therefore search the source PDF
+    itself for a text block that STARTS with `Fig. N` / `Figure N`.
+
+    Returns:
+        {
+            "page_idx": int,
+            "bbox": [x0,y0,x1,y1],
+            "text": str
+        }
+    """
+    if fitz is None:
+        return None
+
+    m = re.search(
+        r"(?i)(\d+)",
+        figure_label or "",
+    )
+
+    if not m:
+        return None
+
+    number = m.group(1)
+
+    start_re = re.compile(
+        rf"^\s*(?:fig(?:ure)?\.?\s*){re.escape(number)}\b",
+        re.IGNORECASE,
+    )
+
+    doc = None
+
+    try:
+        doc = fitz.open(
+            stream=pdf_bytes,
+            filetype="pdf",
+        )
+
+        candidates = []
+
+        for page_idx in range(
+            len(doc)
+        ):
+            page = doc[
+                page_idx
+            ]
+
+            page_dict = page.get_text(
+                "dict"
+            )
+
+            for block in page_dict.get(
+                "blocks",
+                [],
+            ):
+                if block.get(
+                    "type"
+                ) != 0:
+                    continue
+
+                text = _pdf_block_text(
+                    block
+                )
+
+                if not start_re.match(
+                    text
+                ):
+                    continue
+
+                bbox = block.get(
+                    "bbox"
+                )
+
+                if (
+                    not bbox
+                    or len(bbox) != 4
+                ):
+                    continue
+
+                # Longer blocks are more likely to be the actual full caption
+                # rather than a stray short label.
+                score = len(
+                    text
+                )
+
+                if re.search(
+                    r"\(\s*A\s*\)",
+                    text,
+                    flags=re.IGNORECASE,
+                ):
+                    score += 250
+
+                candidates.append(
+                    (
+                        score,
+                        page_idx,
+                        [
+                            float(v)
+                            for v in bbox
+                        ],
+                        text,
+                    )
+                )
+
+        if not candidates:
+            return None
+
+        candidates.sort(
+            key=lambda x: x[0],
+            reverse=True,
+        )
+
+        _, page_idx, bbox, text = (
+            candidates[0]
+        )
+
+        return {
+            "page_idx": page_idx,
+            "bbox": bbox,
+            "text": text,
+        }
+
+    except Exception:
+        return None
+
+    finally:
+        if doc is not None:
+            try:
+                doc.close()
+            except Exception:
+                pass
+
+
+def _caption_anchor_crop_pdf_coordinates(
+    *,
+    pdf_bytes: bytes,
+    page_idx: int,
+    caption_bbox,
+    cache_dir: Path,
+    key: str,
+    zoom: float = 2.6,
+) -> Optional[Path]:
+    """
+    Crop the actual visual region immediately ABOVE a caption whose bbox is
+    already in original PDF coordinates.
+
+    This bypasses MinerU page-index and coordinate-system ambiguity entirely.
+    """
+    if fitz is None:
+        return None
+
+    doc = None
+
+    try:
+        doc = fitz.open(
+            stream=pdf_bytes,
+            filetype="pdf",
+        )
+
+        if (
+            page_idx < 0
+            or page_idx >= len(doc)
+        ):
+            return None
+
+        page = doc[
+            page_idx
+        ]
+
+        caption_rect = fitz.Rect(
+            [
+                float(v)
+                for v in caption_bbox
+            ]
+        ) & page.rect
+
+        page_w = float(
+            page.rect.width
+        )
+
+        caption_ratio = (
+            caption_rect.width
+            / max(
+                1.0,
+                page_w,
+            )
+        )
+
+        # Full-width caption -> full-width visual.
+        # Otherwise preserve journal column.
+        if caption_ratio >= 0.68:
+            crop_x0 = 12.0
+            crop_x1 = (
+                page_w - 12.0
+            )
+
+        else:
+            pad_x = max(
+                8.0,
+                caption_rect.width
+                * 0.04,
+            )
+
+            crop_x0 = max(
+                12.0,
+                caption_rect.x0
+                - pad_x,
+            )
+
+            crop_x1 = min(
+                page_w - 12.0,
+                caption_rect.x1
+                + pad_x,
+            )
+
+        crop_bottom = (
+            caption_rect.y0
+            - 5.0
+        )
+
+        crop_top = 12.0
+
+        target_column = (
+            crop_x0,
+            0.0,
+            crop_x1,
+            crop_bottom,
+        )
+
+        page_dict = page.get_text(
+            "dict"
+        )
+
+        prose_bottoms = []
+
+        for block in page_dict.get(
+            "blocks",
+            [],
+        ):
+            if block.get(
+                "type"
+            ) != 0:
+                continue
+
+            bbox = block.get(
+                "bbox"
+            )
+
+            if (
+                not bbox
+                or len(bbox) != 4
+            ):
+                continue
+
+            if float(
+                bbox[3]
+            ) >= (
+                crop_bottom - 8
+            ):
+                continue
+
+            if (
+                _horizontal_overlap_ratio(
+                    bbox,
+                    target_column,
+                )
+                < 0.50
+            ):
+                continue
+
+            text = _pdf_block_text(
+                block
+            )
+
+            if not _looks_like_prose(
+                text
+            ):
+                continue
+
+            # Do not treat other Figure captions as normal prose boundaries.
+            if re.match(
+                r"^\s*(?:fig(?:ure)?\.?\s*)\d+",
+                text,
+                flags=re.IGNORECASE,
+            ):
+                continue
+
+            prose_bottoms.append(
+                float(
+                    bbox[3]
+                )
+            )
+
+        if prose_bottoms:
+            proposed = (
+                max(
+                    prose_bottoms
+                )
+                + 6.0
+            )
+
+            # Scientific multi-panel Figures need a meaningful vertical area.
+            if (
+                crop_bottom
+                - proposed
+                >= 70.0
+            ):
+                crop_top = (
+                    proposed
+                )
+
+        rect = fitz.Rect(
+            crop_x0,
+            crop_top,
+            crop_x1,
+            crop_bottom,
+        ) & page.rect
+
+        if (
+            rect.width < 60
+            or rect.height < 70
+        ):
+            return None
+
+        pix = page.get_pixmap(
+            matrix=fitz.Matrix(
+                zoom,
+                zoom,
+            ),
+            clip=rect,
+            alpha=False,
+        )
+
+        target = (
+            cache_dir
+            / f"{key}_original_caption_anchor.png"
+        )
+
+        pix.save(
+            str(target)
+        )
+
+        return target
+
+    except Exception:
+        return None
+
+    finally:
+        if doc is not None:
+            try:
+                doc.close()
+            except Exception:
+                pass
+
+
 def _extract_from_middle_json(
     *,
     middle_json: Dict,
@@ -911,9 +1300,55 @@ def _extract_from_middle_json(
             rendered = None
             asset_mode = None
             selected_bbox = body_bbox
+            selected_page_idx = page_idx
 
+            # PRIMARY:
+            # Re-find the real Fig. N caption directly in the ORIGINAL PDF.
+            # This fixes cases where MinerU has the right semantic Figure label
+            # but the wrong/incomplete page geometry.
+            original_anchor = _find_original_pdf_caption_anchor(
+                pdf_bytes=pdf_bytes,
+                figure_label=label,
+            )
+
+            if original_anchor is not None:
+                original_render = _caption_anchor_crop_pdf_coordinates(
+                    pdf_bytes=pdf_bytes,
+                    page_idx=original_anchor[
+                        "page_idx"
+                    ],
+                    caption_bbox=original_anchor[
+                        "bbox"
+                    ],
+                    cache_dir=cache_dir,
+                    key=key,
+                )
+
+                if original_render is not None:
+                    rendered = original_render
+                    asset_mode = (
+                        "original_pdf_caption_anchor"
+                    )
+                    selected_bbox = (
+                        original_anchor[
+                            "bbox"
+                        ]
+                    )
+                    selected_page_idx = (
+                        original_anchor[
+                            "page_idx"
+                        ]
+                    )
+                    caption = (
+                        original_anchor[
+                            "text"
+                        ]
+                    )
+
+            # FALLBACK 1:
+            # MinerU semantic caption anchor.
             if (
-                suspicious_multi_panel
+                rendered is None
                 and caption_bbox is not None
             ):
                 rendered = _caption_anchor_crop(
@@ -928,12 +1363,14 @@ def _extract_from_middle_json(
 
                 if rendered is not None:
                     asset_mode = (
-                        "hybrid_caption_anchor_crop"
+                        "mineru_caption_anchor_fallback"
                     )
                     selected_bbox = (
                         caption_bbox
                     )
 
+            # FALLBACK 2:
+            # MinerU body geometry.
             if rendered is None:
                 rendered = _render_middle_bbox(
                     pdf_bytes=pdf_bytes,
@@ -947,40 +1384,7 @@ def _extract_from_middle_json(
 
                 if rendered is not None:
                     asset_mode = (
-                        "mineru_body_bbox_union"
-                    )
-
-            # Final recovery: if the body result is implausibly narrow and we
-            # have a real Figure caption, prefer a caption-anchored crop anyway.
-            if (
-                caption_bbox is not None
-                and (
-                    rendered is None
-                    or (
-                        panel_count >= 3
-                        and caption_width > 0
-                        and body_width
-                        < caption_width * 0.85
-                    )
-                )
-            ):
-                hybrid = _caption_anchor_crop(
-                    pdf_bytes=pdf_bytes,
-                    page_idx=page_idx,
-                    caption_bbox=caption_bbox,
-                    page_size=page_size,
-                    backend=backend,
-                    cache_dir=cache_dir,
-                    key=key,
-                )
-
-                if hybrid is not None:
-                    rendered = hybrid
-                    asset_mode = (
-                        "hybrid_caption_anchor_crop"
-                    )
-                    selected_bbox = (
-                        caption_bbox
+                        "mineru_body_bbox_fallback"
                     )
 
             if rendered is None:
@@ -990,7 +1394,7 @@ def _extract_from_middle_json(
                 "figure_label": label,
                 "figure_key": key,
                 "page_number": (
-                    page_idx + 1
+                    selected_page_idx + 1
                 ),
                 "caption": caption,
                 "image_path": str(
@@ -998,7 +1402,7 @@ def _extract_from_middle_json(
                 ),
                 "bbox": selected_bbox,
                 "engine": (
-                    "mineru_hybrid_v5"
+                    "mineru_original_anchor_v6"
                 ),
                 "asset_mode": (
                     asset_mode
@@ -1064,7 +1468,7 @@ def extract_figures_with_mineru(
     pdf_bytes: bytes,
     paper_hash: str,
     token: str,
-    cache_root: str = "figure_cache/mineru_hybrid_v5",
+    cache_root: str = "figure_cache/mineru_original_anchor_v6",
     language: str = "en",
     force: bool = False,
 ) -> List[Dict]:
@@ -1118,7 +1522,7 @@ def extract_figures_with_mineru(
                 and payload.get(
                     "engine"
                 )
-                == "mineru_hybrid_v5"
+                == "mineru_original_anchor_v6"
             ):
                 figures = payload.get(
                     "figures",
@@ -1226,7 +1630,7 @@ def extract_figures_with_mineru(
         json.dumps(
             {
                 "engine": (
-                    "mineru_hybrid_v5"
+                    "mineru_original_anchor_v6"
                 ),
                 "extractor_version": (
                     MINERU_EXTRACTOR_VERSION
