@@ -13,7 +13,7 @@ from pypdf import PdfReader
 
 from i18n import language_selector, L
 from knowledge_widget import render_knowledge_archive_widget
-from ai_engine import (
+from ai_router import (
     analyze_core,
     analyze_prerequisites,
     analyze_experiments,
@@ -21,11 +21,14 @@ from ai_engine import (
     analyze_single_figure,
     analyze_critical_learning,
     StageCallError,
-    sdk_available,
-    openai_sdk_available,
-    TEXT_MODELS,
-    FIGURE_MODELS,
-    OPENAI_FIGURE_MODELS,
+    get_text_models,
+    get_figure_models,
+)
+from ai_provider import (
+    get_selected_provider,
+    get_provider_api_key,
+    provider_ready,
+    provider_label,
 )
 
 from figure_in_study import (
@@ -44,7 +47,7 @@ from source_pdf_figure_extractor import (
     available as source_pdf_extractor_available,
 )
 
-APP_VERSION = "v0.3.3-beta"
+APP_VERSION = "v0.3.4.1-beta"
 METHOD_PROFILE_FILE = Path("method_profiles.json")
 
 st.set_page_config(
@@ -582,48 +585,6 @@ if lang == "ko":
         "🧬 Korean prose + English scientific terminology"
     )
 
-server_key = get_server_key()
-openai_key = get_openai_key()
-
-if server_key:
-    st.sidebar.success(
-        "✨ Core / Plus · Gemini ready"
-    )
-else:
-    st.sidebar.error(
-        L(
-            lang,
-            "Core용 GEMINI_API_KEY 미설정",
-            "GEMINI_API_KEY missing for Core",
-        )
-    )
-
-if openai_key and openai_sdk_available():
-    st.sidebar.success(
-        "🖼 Figure AI · OpenAI ready"
-    )
-    st.sidebar.caption(
-        "Figure primary: "
-        + " → ".join(OPENAI_FIGURE_MODELS)
-    )
-elif server_key and sdk_available():
-    st.sidebar.warning(
-        "🖼 Figure AI · Gemini fallback only"
-    )
-else:
-    st.sidebar.error(
-        L(
-            lang,
-            "Figure AI용 API provider가 없습니다.",
-            "No Figure AI provider configured.",
-        )
-    )
-
-st.sidebar.caption(
-    "Core / Plus: "
-    + " → ".join(TEXT_MODELS)
-)
-
 
 # ============================================================
 # ACTIVE PAPER
@@ -636,6 +597,22 @@ st.title(
 render_knowledge_archive_widget(
     lang=lang,
     depth=depth,
+)
+
+# Provider choice is global and persists in Streamlit session state.
+# Read it AFTER the sidebar widget so this rerun uses the user's latest choice.
+selected_provider = get_selected_provider()
+provider_key = get_provider_api_key(selected_provider)
+provider_ok = provider_ready(selected_provider)
+
+st.sidebar.caption(
+    f"Active AI: {provider_label(selected_provider, lang)}"
+)
+st.sidebar.caption(
+    "Text: " + " → ".join(get_text_models(selected_provider))
+)
+st.sidebar.caption(
+    "Figure: " + " → ".join(get_figure_models(selected_provider))
 )
 
 
@@ -1197,8 +1174,8 @@ if not main_ready:
         st.caption(
             L(
                 lang,
-                "기본 분석에서 Gemini는 Core에만 사용됩니다. Figure crop/legend 추출은 먼저 PDF에서 직접 처리하고, 실패할 때만 MinerU fallback을 사용합니다.",
-                "The default analysis uses Gemini only for Core. Figure crop/legend extraction is local first, with MinerU only as fallback.",
+                "기본 분석에서는 현재 선택한 AI provider가 Core에 사용됩니다. Figure crop/legend 추출은 PDF에서 직접 처리합니다.",
+                "The currently selected AI provider is used for Core. Figure crop/legend extraction is handled directly from the PDF.",
             )
         )
 
@@ -1212,8 +1189,7 @@ if not main_ready:
                 type="primary",
                 use_container_width=True,
                 disabled=(
-                    not server_key
-                    or not sdk_available()
+                    not provider_ok
                 ),
                 key=(
                     "lal_main_analyze_paper"
@@ -1276,7 +1252,8 @@ if not main_ready:
                     result, model = (
                         analyze_core(
                             paper_text=paper_text,
-                            api_key=server_key,
+                            api_key=provider_key,
+                            provider=selected_provider,
                             depth=depth,
                             detected_methods=[
                                 name
@@ -1714,16 +1691,7 @@ if core_record or extracted_study_figures:
             )
         )
 
-        figure_provider_ready = bool(
-            (
-                openai_key
-                and openai_sdk_available()
-            )
-            or (
-                server_key
-                and sdk_available()
-            )
-        )
+        figure_provider_ready = provider_ok
 
         analyzed_count = sum(
             1
@@ -1737,10 +1705,9 @@ if core_record or extracted_study_figures:
         if extracted_study_figures:
             st.caption(
                 f"AI analyzed: {analyzed_count}/{len(extracted_study_figures)} · "
-                + (
-                    "OpenAI primary → Gemini fallback"
-                    if openai_key and openai_sdk_available()
-                    else "Gemini fallback"
+                + provider_label(
+                    selected_provider,
+                    lang,
                 )
             )
 
@@ -1882,11 +1849,11 @@ if core_record or extracted_study_figures:
                                     if core_record
                                     else {}
                                 ),
-                                openai_api_key=(
-                                    openai_key
+                                api_key=(
+                                    provider_key
                                 ),
-                                gemini_api_key=(
-                                    server_key
+                                provider=(
+                                    selected_provider
                                 ),
                             )
 
@@ -2040,8 +2007,7 @@ if core_record:
                     "plus_generate_prerequisites"
                 ),
                 disabled=(
-                    not server_key
-                    or not sdk_available()
+                    not provider_ok
                 ),
             ):
                 with st.spinner(
@@ -2060,7 +2026,8 @@ if core_record:
                                         "data"
                                     ]
                                 ),
-                                api_key=server_key,
+                                api_key=provider_key,
+                                provider=selected_provider,
                                 depth=depth,
                             )
                         )
@@ -2195,8 +2162,7 @@ if core_record:
                     "plus_generate_experiments"
                 ),
                 disabled=(
-                    not server_key
-                    or not sdk_available()
+                    not provider_ok
                 ),
             ):
                 with st.spinner(
@@ -2215,7 +2181,8 @@ if core_record:
                                         "data"
                                     ]
                                 ),
-                                api_key=server_key,
+                                api_key=provider_key,
+                                provider=selected_provider,
                                 detected_methods=[
                                     name
                                     for name, _
@@ -2432,8 +2399,7 @@ if core_record:
                     "plus_generate_critical"
                 ),
                 disabled=(
-                    not server_key
-                    or not sdk_available()
+                    not provider_ok
                 ),
             ):
                 with st.spinner(
@@ -2459,7 +2425,8 @@ if core_record:
                                     if experiments_record
                                     else None
                                 ),
-                                api_key=server_key,
+                                api_key=provider_key,
+                                provider=selected_provider,
                                 depth=depth,
                             )
                         )

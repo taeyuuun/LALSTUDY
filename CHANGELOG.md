@@ -1,5 +1,21 @@
 # Changelog
 
+
+## [0.3.4.1-beta] - 2026-09-12
+
+### Global AI provider
+- Gemini / OpenAI choice persists for subsequent AI calls until changed
+- Core, Plus analyses, per-Figure analysis, and Knowledge Archive MISS generation follow the selected provider
+- No silent cross-provider fallback
+
+### OpenAI official usage sync
+- Added server-side OpenAI Organization Usage API sync using `OPENAI_ADMIN_KEY`
+- Added official Organization Costs API sync for today's billed cost
+- Data-sharing incentive tier is detected when exposed by the Usage API
+- Complimentary remaining tokens use the configured daily allowance (default 2.5M for this account)
+- 60-second cache plus manual refresh button
+- Admin key is never displayed in the UI
+
 All notable LALSTUDY updates will be recorded here.
 
 ## [0.3.3-beta] - 2026-09-11

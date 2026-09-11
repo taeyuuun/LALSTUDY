@@ -3,9 +3,12 @@ from typing import Dict, List
 
 import streamlit as st
 
-from ai_engine import (
-    explain_concepts_batch,
-    sdk_available,
+from ai_router import explain_concepts_batch
+from ai_provider import (
+    render_ai_provider_panel,
+    get_provider_api_key,
+    provider_ready,
+    provider_label,
 )
 from knowledge_archive import (
     KnowledgeArchive,
@@ -21,26 +24,6 @@ def _L(
     en: str,
 ) -> str:
     return ko if lang == "ko" else en
-
-
-def _gemini_key() -> str:
-    try:
-        if "GEMINI_API_KEY" in st.secrets:
-            value = str(
-                st.secrets[
-                    "GEMINI_API_KEY"
-                ]
-            ).strip()
-
-            if value:
-                return value
-    except Exception:
-        pass
-
-    return os.getenv(
-        "GEMINI_API_KEY",
-        "",
-    ).strip()
 
 
 @st.cache_resource(
@@ -317,6 +300,9 @@ def render_knowledge_archive_widget(
     Archive search is API-free.
     Gemini is called only after an explicit MISS-generation click.
     """
+
+    selected_provider = render_ai_provider_panel(lang=lang)
+    provider_key = get_provider_api_key(selected_provider)
 
     supabase_url, supabase_secret = (
         get_supabase_credentials(
@@ -719,10 +705,6 @@ def render_knowledge_archive_widget(
                     )
                 )
 
-                gemini_key = (
-                    _gemini_key()
-                )
-
                 generate_clicked = (
                     st.button(
                         _L(
@@ -732,8 +714,8 @@ def render_knowledge_archive_widget(
                         ),
                         use_container_width=True,
                         disabled=(
-                            not gemini_key
-                            or not sdk_available()
+                            not provider_key
+                            or not provider_ready(selected_provider)
                         ),
                         key=(
                             "lal_archive_generate_queue_v2"
@@ -744,8 +726,8 @@ def render_knowledge_archive_widget(
                 st.caption(
                     _L(
                         lang,
-                        "이 버튼을 눌렀을 때만 Gemini request 1회가 발생합니다.",
-                        "Gemini is called once only when this button is clicked.",
+                        f"이 버튼을 눌렀을 때만 {provider_label(selected_provider, lang)} request 1회가 발생합니다.",
+                        f"{provider_label(selected_provider, lang)} is called once only when this button is clicked.",
                     )
                 )
 
@@ -764,12 +746,13 @@ def render_knowledge_archive_widget(
                                         misses
                                     ),
                                     api_key=(
-                                        gemini_key
+                                        provider_key
                                     ),
                                     depth=depth,
                                     paper_context=(
                                         paper_context
                                     ),
+                                    provider=selected_provider,
                                 )
                             )
 

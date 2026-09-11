@@ -2,7 +2,7 @@
 
 > Learn a paper, understand the experiment, and keep learning without losing context.
 
-**Current version: `v0.3.3-beta`**
+**Current version: `v0.3.4.1-beta`**
 
 LALSTUDY is an experimental scientific-paper learning platform that connects two workflows:
 
@@ -662,3 +662,15 @@ OPENAI_API_KEY = "sk-..."
 ```
 
 Never commit the real key. `.streamlit/secrets.toml` remains gitignored.
+
+
+## v0.3.4.1 — Official OpenAI usage sync
+
+- Global Gemini / OpenAI provider selector
+- Provider choice persists until changed
+- Per-Figure analysis remains independent per Figure
+- OpenAI Organization Usage + Costs official sync with `OPENAI_ADMIN_KEY`
+- Complimentary token remaining display when the data-sharing incentive tier is visible
+- Automatic fallback to clearly labelled estimate if the incentive tier is not exposed
+
+See `OPENAI_USAGE_SETUP.md`.
