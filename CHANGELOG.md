@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.0-beta] - 2026-09-12
+
+### Method Wiki
+- Rebuilt Method Explorer as a search-first encyclopedia home
+- Removed the default ATAC-seq selection
+- Added name + alias search
+- Added four faceted browse dimensions: purpose, material, principle, output
+- Added a lean Supabase `method_encyclopedia` table for reusable method explanations
+- Added one-time OpenAI generation + DB reuse for missing encyclopedia entries
+- Kept paper/Figure relationships in the existing corpus instead of duplicating them in SQL
+- Preserved paper filtering and Europe PMC Figure loading
+
 ## [0.4.4.2-beta] - 2026-09-12
 
 ### Auto local enrichment

@@ -152,6 +152,22 @@ class BilingualCriticalLearning(BaseModel):
     en: CriticalLearningAnalysis
 
 
+class MethodEncyclopediaEntry(BaseModel):
+    canonical_name: str
+
+    summary_ko: str
+    summary_en: str
+
+    principle_ko: str
+    principle_en: str
+
+    best_for_ko: str
+    best_for_en: str
+
+    limitations_ko: str
+    limitations_en: str
+
+
 class ConceptExplanation(BaseModel):
     requested_term: str
     canonical_name: str
