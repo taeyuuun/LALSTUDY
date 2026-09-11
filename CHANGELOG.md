@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.4.4.2-beta] - 2026-09-12
+
+### Auto local enrichment
+- Automatically computes actual detected-method count for cached papers
+- Automatically extracts Figure crops + source legends after a cached Core load
+- Fixed a regression where Figure extractors received `canonical_key` instead of the required `paper_hash`
+- Figure crops remain local and are never stored in Supabase Storage
+- Surface local Figure-preparation errors instead of silently showing zero Figures
+
+## [0.4.4.1-beta] - 2026-09-12
+
+### Compact PDF metadata
+- Replaced large Streamlit metric widgets in the PDF metadata row
+- Fixed oversized `Detected methods / On demand` text
+- Unified Pages / Detected methods / PDF size as compact text metadata
+
 ## [0.4.4-beta] - 2026-09-12
 
 ### Fast cache load

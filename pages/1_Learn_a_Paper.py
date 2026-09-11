@@ -52,7 +52,7 @@ from source_pdf_figure_extractor import (
     available as source_pdf_extractor_available,
 )
 
-APP_VERSION = "v0.4.4-beta"
+APP_VERSION = "v0.4.4.2-beta"
 METHOD_PROFILE_FILE = Path("method_profiles.json")
 
 st.set_page_config(
@@ -1264,36 +1264,46 @@ page_count = get_pdf_page_count(
 
 m1, m2, m3 = st.columns(3)
 
-m1.metric(
-    L(lang, "페이지", "Pages"),
-    page_count,
-)
+with m1:
+    st.caption(
+        L(lang, "페이지", "Pages")
+    )
+    st.markdown(
+        f"**{page_count}**"
+    )
 
-m2.metric(
-    L(
-        lang,
-        "감지 method",
-        "Detected methods",
-    ),
-    (
-        len(rule_methods)
+with m2:
+    st.caption(
+        L(
+            lang,
+            "감지 method",
+            "Detected methods",
+        )
+    )
+    detected_method_value = (
+        str(len(rule_methods))
         if full_context
         else L(
             lang,
-            "필요 시",
-            "On demand",
+            "불러오는 중…",
+            "Loading…",
         )
-    ),
-)
+    )
+    st.markdown(
+        f"**{detected_method_value}**"
+    )
 
-m3.metric(
-    L(
-        lang,
-        "PDF 크기",
-        "PDF size",
-    ),
-    f"{len(pdf_bytes)/(1024*1024):.1f} MB",
-)
+with m3:
+    st.caption(
+        L(
+            lang,
+            "PDF 크기",
+            "PDF size",
+        )
+    )
+    st.markdown(
+        f"**{len(pdf_bytes)/(1024*1024):.1f} MB**"
+    )
 
 
 if (
@@ -1305,8 +1315,8 @@ if (
     st.success(
         L(
             lang,
-            "⚡ 저장된 Core Analysis를 불러왔습니다. 전체 PDF text는 아직 읽지 않았고, Figure는 필요할 때 현재 PDF에서 추출합니다.",
-            "⚡ Cached Core Analysis loaded. The full PDF text has not been parsed yet; Figures will be extracted from the current PDF only when needed.",
+            "⚡ 저장된 Core Analysis를 불러왔습니다. Method 수와 Figure는 현재 PDF에서 자동으로 준비합니다.",
+            "⚡ Cached Core Analysis loaded. Method count and Figures are being prepared automatically from the current PDF.",
         ),
         icon="☁️",
     )
@@ -1406,7 +1416,7 @@ def prepare_main_figures(
             figures = (
                 extract_figures_from_source_pdf(
                     pdf_bytes=pdf_bytes,
-                    canonical_key=active_paper_key(),
+                    paper_hash=active_hash(),
                     force=force,
                 )
             )
@@ -1434,7 +1444,7 @@ def prepare_main_figures(
         figures = (
             extract_figures_with_mineru(
                 pdf_bytes=pdf_bytes,
-                canonical_key=active_paper_key(),
+                paper_hash=active_hash(),
                 token=mineru_token,
                 language="en",
                 force=force,
@@ -1459,6 +1469,137 @@ def prepare_main_figures(
         [],
         "not_prepared",
     )
+
+
+
+# ============================================================
+# AUTO LOCAL ENRICHMENT FOR CACHED PAPERS
+# ============================================================
+#
+# A cached AI result should still feel like a complete paper load.
+# We therefore automatically prepare the two local-only pieces that are not
+# stored in Supabase:
+#   1) method count from the uploaded PDF text
+#   2) Figure crops + original legends from the uploaded PDF
+#
+# This never calls OpenAI and never uploads Figure images to Supabase Storage.
+#
+# NOTE:
+# Figure extraction is intentionally keyed by exact PDF SHA-256 because the
+# crop coordinates belong to the concrete uploaded file, not just the DOI.
+
+auto_enrichment_key = (
+    "lal_auto_local_enrichment:v1:"
+    + active_hash()
+)
+
+if (
+    core_record
+    and not st.session_state.get(
+        auto_enrichment_key,
+        False,
+    )
+    and (
+        (not full_context)
+        or (not extracted_study_figures)
+    )
+):
+    with st.status(
+        L(
+            lang,
+            "⚙️ 저장된 분석에 PDF 정보를 붙이는 중...",
+            "⚙️ Preparing local PDF details for the cached analysis...",
+        ),
+        expanded=False,
+    ) as local_status:
+        local_errors = []
+
+        # Method count: local full-text parsing only.
+        if not full_context:
+            try:
+                full_context = (
+                    ensure_full_paper_context()
+                )
+                pages = full_context[
+                    "pages"
+                ]
+                paper_text = full_context[
+                    "paper_text"
+                ]
+                rule_methods = full_context[
+                    "rule_methods"
+                ]
+                local_status.write(
+                    L(
+                        lang,
+                        f"Method {len(rule_methods)}개 감지",
+                        f"Detected {len(rule_methods)} methods",
+                    )
+                )
+            except Exception as exc:
+                local_errors.append(
+                    "Method scan: "
+                    + str(exc)
+                )
+
+        # Figures: source-PDF crop first, MinerU fallback as before.
+        if not extracted_study_figures:
+            try:
+                (
+                    extracted_study_figures,
+                    figure_extraction_engine,
+                ) = prepare_main_figures(
+                    force=False
+                )
+
+                local_status.write(
+                    L(
+                        lang,
+                        f"Figure {len(extracted_study_figures)}개 준비",
+                        f"Prepared {len(extracted_study_figures)} Figures",
+                    )
+                )
+
+                if not extracted_study_figures:
+                    local_errors.append(
+                        "No Figure captions/images were detected."
+                    )
+
+            except Exception as exc:
+                local_errors.append(
+                    "Figure extraction: "
+                    + str(exc)
+                )
+
+        st.session_state[
+            auto_enrichment_key
+        ] = True
+
+        if local_errors:
+            st.session_state[
+                "lal_auto_local_enrichment_errors"
+            ] = local_errors
+
+            local_status.update(
+                label=L(
+                    lang,
+                    "⚠️ 일부 PDF 정보 준비 실패",
+                    "⚠️ Some local PDF details could not be prepared",
+                ),
+                state="error",
+            )
+        else:
+            local_status.update(
+                label=L(
+                    lang,
+                    "✅ Method / Figure 준비 완료",
+                    "✅ Methods / Figures ready",
+                ),
+                state="complete",
+            )
+
+    # Re-render metadata and Main Analysis using the newly prepared values.
+    st.rerun()
 
 
 def figure_number(
@@ -1692,16 +1833,16 @@ if not main_ready:
         st.write(
             L(
                 lang,
-                "저장된 Core Analysis가 있으면 즉시 불러오고, Figure 이미지와 legend는 현재 PDF에서 필요할 때만 추출합니다.",
-                "A cached Core Analysis loads immediately; Figure images and legends are extracted locally from the current PDF only when needed.",
+                "저장된 Core Analysis가 있으면 즉시 불러오고, Method 수와 Figure/legend는 현재 PDF에서 자동으로 준비합니다.",
+                "A cached Core Analysis loads immediately; method count and Figure/legend data are then prepared automatically from the current PDF.",
             )
         )
 
         st.caption(
             L(
                 lang,
-                "DB에 없는 Core만 OpenAI를 호출합니다. Figure crop은 Storage에 저장하지 않고 기존처럼 PDF에서 직접 생성합니다.",
-                "OpenAI is called only for an uncached Core. Figure crops are not stored in cloud Storage and are generated directly from the PDF as before.",
+                "DB에 없는 Core만 OpenAI를 호출합니다. Figure crop은 Storage에 저장하지 않으며 업로드한 PDF에서 매번 로컬 생성합니다.",
+                "OpenAI is called only for an uncached Core. Figure crops are never stored in cloud Storage and are generated locally from the uploaded PDF.",
             )
         )
 
@@ -2214,10 +2355,29 @@ if core_record or extracted_study_figures:
             st.warning(
                 L(
                     lang,
-                    "Figure가 준비되지 않았습니다.",
-                    "Figures are not prepared yet.",
+                    "Figure를 자동 준비하지 못했습니다. 아래 진단에서 원인을 확인할 수 있습니다.",
+                    "Figures could not be prepared automatically. Check the diagnostics below.",
                 )
             )
+
+            auto_local_errors = (
+                st.session_state.get(
+                    "lal_auto_local_enrichment_errors",
+                    [],
+                )
+                or []
+            )
+
+            if auto_local_errors:
+                with st.expander(
+                    L(
+                        lang,
+                        "자동 준비 오류",
+                        "Automatic preparation errors",
+                    )
+                ):
+                    for error in auto_local_errors:
+                        st.code(error)
 
         st.caption(
             L(
