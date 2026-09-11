@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import random
@@ -12,6 +13,11 @@ try:
 except Exception:
     genai = None
     types = None
+
+try:
+    from openai import OpenAI
+except Exception:
+    OpenAI = None
 
 
 # Current stable fallback pools.
@@ -29,6 +35,15 @@ FIGURE_MODELS = [
     for x in os.getenv(
         "LALSTUDY_FIGURE_MODELS",
         "gemini-3.8-flash,gemini-3.5-flash",
+    ).split(",")
+    if x.strip()
+]
+
+OPENAI_FIGURE_MODELS = [
+    x.strip()
+    for x in os.getenv(
+        "LALSTUDY_OPENAI_FIGURE_MODELS",
+        "gpt-5.6-luna,gpt-5.6-terra",
     ).split(",")
     if x.strip()
 ]
@@ -157,6 +172,11 @@ class BilingualFigures(BaseModel):
     en: FiguresAnalysis
 
 
+class BilingualSingleFigure(BaseModel):
+    ko: FigureAnalysis
+    en: FigureAnalysis
+
+
 class BilingualCriticalLearning(BaseModel):
     ko: CriticalLearningAnalysis
     en: CriticalLearningAnalysis
@@ -251,6 +271,10 @@ GROUNDING RULES
 
 def sdk_available():
     return genai is not None and types is not None
+
+
+def openai_sdk_available():
+    return OpenAI is not None
 
 
 def compact_text(text: str, max_chars: int = 150_000) -> str:
@@ -356,6 +380,8 @@ def _call_structured(
     schema: Type[BaseModel],
     model_pool: List[str],
     pdf_bytes: Optional[bytes] = None,
+    image_bytes: Optional[bytes] = None,
+    image_mime_type: str = "image/png",
     thinking_level: str = "low",
 ):
     if not sdk_available():
@@ -366,11 +392,22 @@ def _call_structured(
 
     client = genai.Client(api_key=api_key)
 
+    if pdf_bytes is not None and image_bytes is not None:
+        raise ValueError("Provide either pdf_bytes or image_bytes, not both.")
+
     if pdf_bytes is not None:
         contents = [
             types.Part.from_bytes(
                 data=pdf_bytes,
                 mime_type="application/pdf",
+            ),
+            prompt,
+        ]
+    elif image_bytes is not None:
+        contents = [
+            types.Part.from_bytes(
+                data=image_bytes,
+                mime_type=image_mime_type,
             ),
             prompt,
         ]
@@ -449,6 +486,101 @@ def _call_structured(
         stage=stage,
         trace=errors,
     )
+
+
+
+def _call_openai_figure_structured(
+    *,
+    api_key: str,
+    stage: str,
+    prompt: str,
+    image_bytes: bytes,
+    image_mime_type: str,
+    schema: Type[BaseModel],
+    model_pool: List[str],
+):
+    if not openai_sdk_available():
+        raise RuntimeError("openai is not installed.")
+
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY is not configured.")
+
+    client = OpenAI(api_key=api_key)
+    encoded = base64.b64encode(image_bytes).decode("ascii")
+    data_url = f"data:{image_mime_type};base64,{encoded}"
+
+    errors = []
+
+    for model_name in model_pool:
+        for attempt in range(2):
+            try:
+                response = client.responses.parse(
+                    model=model_name,
+                    input=[
+                        {
+                            "role": "system",
+                            "content": (
+                                "You are a rigorous scientific figure-reading engine. "
+                                "Do not invent panel labels, statistics, methods, or results."
+                            ),
+                        },
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "input_text",
+                                    "text": prompt,
+                                },
+                                {
+                                    "type": "input_image",
+                                    "image_url": data_url,
+                                    "detail": "high",
+                                },
+                            ],
+                        },
+                    ],
+                    text_format=schema,
+                )
+
+                parsed = getattr(response, "output_parsed", None)
+
+                if parsed is None:
+                    raise RuntimeError(
+                        f"{model_name} returned no structured output."
+                    )
+
+                if isinstance(parsed, schema):
+                    result = parsed
+                else:
+                    result = schema.model_validate(parsed)
+
+                usage = getattr(response, "usage", None)
+                usage_dict = None
+
+                if usage is not None:
+                    usage_dict = {
+                        "input_tokens": getattr(usage, "input_tokens", None),
+                        "output_tokens": getattr(usage, "output_tokens", None),
+                        "total_tokens": getattr(usage, "total_tokens", None),
+                    }
+
+                return result, model_name, usage_dict
+
+            except Exception as exc:
+                errors.append(
+                    f"OpenAI {model_name} attempt {attempt + 1}: {exc}"
+                )
+
+                if _is_model_unavailable(exc):
+                    break
+
+                if not _is_transient(exc):
+                    break
+
+                if attempt == 0:
+                    time.sleep(1.0 + random.uniform(0.0, 0.5))
+
+    raise StageCallError(stage=stage, trace=errors)
 
 
 def _core_context(core_bundle: dict) -> str:
@@ -677,6 +809,116 @@ Keep the output focused rather than exhaustive.
         model_pool=FIGURE_MODELS,
         pdf_bytes=pdf_bytes,
         thinking_level="low",
+    )
+
+
+
+# ============================================================
+# SINGLE FIGURE ANALYSIS — OPENAI PRIMARY, GEMINI FALLBACK
+# ============================================================
+
+def analyze_single_figure(
+    *,
+    figure_label: str,
+    image_bytes: bytes,
+    image_mime_type: str,
+    legend: str,
+    core_bundle: dict,
+    openai_api_key: str = "",
+    gemini_api_key: str = "",
+):
+    if not image_bytes:
+        raise ValueError("Figure image is empty.")
+
+    figure_label = (figure_label or "Figure").strip()
+    legend = (legend or "").strip()
+
+    prompt = f"""
+You are LALSTUDY's single-Figure scientific reading module.
+
+{LANGUAGE_RULE}
+{GROUNDING_RULE}
+
+CORE ANALYSIS
+=============
+{_core_context(core_bundle)}
+
+TARGET FIGURE
+=============
+Label: {figure_label}
+
+ORIGINAL FIGURE LEGEND
+======================
+{legend[:18_000] or "No legend was extracted."}
+
+TASK
+Analyze ONLY the single Figure image supplied with this request.
+The image and its original legend are the primary evidence.
+Use the Core Analysis only to understand where this Figure fits in the paper.
+
+Return one FigureAnalysis in Korean and one semantically equivalent English version.
+For this Figure explain:
+- role in the paper's story
+- main scientific question
+- panel-by-panel WHAT / HOW / RESULT / INTERPRETATION when panel labels are readable
+- methods used in each panel when supported by the image or legend
+- overall takeaway
+- what this Figure supports
+- what it does NOT establish
+
+IMPORTANT
+- Do not analyze any other Figure.
+- Preserve the target label as `{figure_label}`.
+- Do not invent unreadable panel labels, values, statistics, or methods.
+- If a panel is visually ambiguous, state the uncertainty instead of guessing.
+- Distinguish observation from inference.
+"""
+
+    provider_errors = []
+
+    if openai_api_key and openai_sdk_available():
+        try:
+            result, model, usage = _call_openai_figure_structured(
+                api_key=openai_api_key,
+                stage=f"single_figure:{figure_label}",
+                prompt=prompt,
+                image_bytes=image_bytes,
+                image_mime_type=image_mime_type,
+                schema=BilingualSingleFigure,
+                model_pool=OPENAI_FIGURE_MODELS,
+            )
+            return result, model, "OpenAI", usage
+        except StageCallError as exc:
+            provider_errors.extend(exc.trace)
+        except Exception as exc:
+            provider_errors.append(f"OpenAI setup/call: {exc}")
+
+    if gemini_api_key and sdk_available():
+        try:
+            result, model = _call_structured(
+                api_key=gemini_api_key,
+                stage=f"single_figure:{figure_label}",
+                prompt=prompt,
+                schema=BilingualSingleFigure,
+                model_pool=FIGURE_MODELS,
+                image_bytes=image_bytes,
+                image_mime_type=image_mime_type,
+                thinking_level="low",
+            )
+            return result, model, "Gemini fallback", None
+        except StageCallError as exc:
+            provider_errors.extend(exc.trace)
+        except Exception as exc:
+            provider_errors.append(f"Gemini fallback setup/call: {exc}")
+
+    if not provider_errors:
+        provider_errors.append(
+            "No usable Figure AI provider is configured. Add OPENAI_API_KEY or GEMINI_API_KEY."
+        )
+
+    raise StageCallError(
+        stage=f"single_figure:{figure_label}",
+        trace=provider_errors,
     )
 
 

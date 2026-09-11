@@ -2,7 +2,7 @@
 
 > Learn a paper, understand the experiment, and keep learning without losing context.
 
-**Current version: `v0.3.2.1-beta`**
+**Current version: `v0.3.3-beta`**
 
 LALSTUDY is an experimental scientific-paper learning platform that connects two workflows:
 
@@ -634,3 +634,31 @@ one query unless the user explicitly adds `apoptotic` and `stress` separately.
 
 Search remains API-free. Archive MISSes can still be generated together in one
 explicit Gemini batch request.
+
+
+## v0.3.3 — Independent Figure AI + OpenAI primary
+
+Figure interpretation is no longer one large whole-PDF AI request.
+Each extracted Figure now has its own `Analyze this Figure` button directly
+below its source image and original Figure legend.
+
+Per-Figure request payload:
+
+```text
+single Figure crop
++ original Figure legend
++ compact Core context
+```
+
+The primary provider is OpenAI (`gpt-5.6-luna`, then `gpt-5.6-terra`).
+If OpenAI is unavailable and `GEMINI_API_KEY` exists, LALSTUDY falls back to
+Gemini for that Figure only. Every Figure is cached independently, so one
+failure does not erase any successful Figure analyses.
+
+Required server secret for OpenAI Figure analysis:
+
+```toml
+OPENAI_API_KEY = "sk-..."
+```
+
+Never commit the real key. `.streamlit/secrets.toml` remains gitignored.

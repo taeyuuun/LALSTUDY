@@ -18,11 +18,14 @@ from ai_engine import (
     analyze_prerequisites,
     analyze_experiments,
     analyze_figures,
+    analyze_single_figure,
     analyze_critical_learning,
     StageCallError,
     sdk_available,
+    openai_sdk_available,
     TEXT_MODELS,
     FIGURE_MODELS,
+    OPENAI_FIGURE_MODELS,
 )
 
 from figure_in_study import (
@@ -41,7 +44,7 @@ from source_pdf_figure_extractor import (
     available as source_pdf_extractor_available,
 )
 
-APP_VERSION = "v0.3.2.1-beta"
+APP_VERSION = "v0.3.3-beta"
 METHOD_PROFILE_FILE = Path("method_profiles.json")
 
 st.set_page_config(
@@ -256,6 +259,27 @@ def get_server_key():
     ).strip()
 
 
+
+def get_openai_key():
+    try:
+        if "OPENAI_API_KEY" in st.secrets:
+            value = str(
+                st.secrets[
+                    "OPENAI_API_KEY"
+                ]
+            ).strip()
+
+            if value:
+                return value
+    except Exception:
+        pass
+
+    return os.getenv(
+        "OPENAI_API_KEY",
+        "",
+    ).strip()
+
+
 def get_mineru_token():
     try:
         if "MINERU_TOKEN" in st.secrets:
@@ -312,6 +336,45 @@ def set_stage(
     ] = {
         "data": result.model_dump(),
         "model": model,
+    }
+
+
+
+def single_figure_stage_name(source_item):
+    key = (
+        source_item.get("figure_key")
+        or source_item.get("figure_label")
+        or "figure"
+    )
+    key = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(key))
+    return f"single_figure:{key}"
+
+
+def get_single_figure_stage(source_item, depth):
+    return get_stage(
+        single_figure_stage_name(source_item),
+        depth,
+    )
+
+
+def set_single_figure_stage(
+    source_item,
+    depth,
+    result,
+    model,
+    provider,
+    usage=None,
+):
+    st.session_state[
+        stage_key(
+            single_figure_stage_name(source_item),
+            depth,
+        )
+    ] = {
+        "data": result.model_dump(),
+        "model": model,
+        "provider": provider,
+        "usage": usage,
     }
 
 
@@ -383,8 +446,15 @@ def difficulty_label(value):
 
 def model_badge(record):
     if record:
+        provider = record.get("provider", "")
+        model = record.get("model", "")
+        label = " · ".join(
+            value
+            for value in [provider, model]
+            if value
+        )
         st.caption(
-            f"AI: {record.get('model','')}"
+            f"AI: {label or model}"
         )
 
 
@@ -513,27 +583,45 @@ if lang == "ko":
     )
 
 server_key = get_server_key()
+openai_key = get_openai_key()
 
 if server_key:
     st.sidebar.success(
-        "✨ AI service ready"
+        "✨ Core / Plus · Gemini ready"
     )
 else:
     st.sidebar.error(
         L(
             lang,
-            "관리자 API key 미설정",
-            "Server API key missing",
+            "Core용 GEMINI_API_KEY 미설정",
+            "GEMINI_API_KEY missing for Core",
+        )
+    )
+
+if openai_key and openai_sdk_available():
+    st.sidebar.success(
+        "🖼 Figure AI · OpenAI ready"
+    )
+    st.sidebar.caption(
+        "Figure primary: "
+        + " → ".join(OPENAI_FIGURE_MODELS)
+    )
+elif server_key and sdk_available():
+    st.sidebar.warning(
+        "🖼 Figure AI · Gemini fallback only"
+    )
+else:
+    st.sidebar.error(
+        L(
+            lang,
+            "Figure AI용 API provider가 없습니다.",
+            "No Figure AI provider configured.",
         )
     )
 
 st.sidebar.caption(
-    "Text: "
+    "Core / Plus: "
     + " → ".join(TEXT_MODELS)
-)
-st.sidebar.caption(
-    "Figure: "
-    + " → ".join(FIGURE_MODELS)
 )
 
 
@@ -1618,98 +1706,51 @@ if core_record or extracted_study_figures:
                 )
             )
 
-        # Figure AI is main, but optional from the first Core request.
-        if not figures_record:
-            if st.button(
-                L(
-                    lang,
-                    "✨ Figure AI 분석하기",
-                    "✨ Analyze Figures with AI",
-                ),
-                type="primary",
-                use_container_width=False,
-                disabled=(
-                    not server_key
-                    or not sdk_available()
-                ),
-                key=(
-                    "lal_main_figure_ai"
-                ),
-            ):
-                with st.spinner(
-                    L(
-                        lang,
-                        "Figure 준비 → AI 해석을 순서대로 처리 중...",
-                        "Preparing Figures → running AI interpretation...",
-                    )
-                ):
-                    try:
-                        if not extracted_study_figures:
-                            (
-                                extracted_study_figures,
-                                figure_extraction_engine,
-                            ) = prepare_main_figures(
-                                force=False
-                            )
-
-                        result, model = (
-                            analyze_figures(
-                                pdf_bytes=pdf_bytes,
-                                core_bundle=(
-                                    core_record[
-                                        "data"
-                                    ]
-                                    if core_record
-                                    else {}
-                                ),
-                                api_key=server_key,
-                            )
-                        )
-
-                        set_stage(
-                            "figures",
-                            depth,
-                            result,
-                            model,
-                        )
-
-                        st.rerun()
-
-                    except Exception as exc:
-                        show_stage_error(
-                            "Figures",
-                            exc,
-                        )
-
-        else:
-            model_badge(
-                figures_record
+        st.caption(
+            L(
+                lang,
+                "각 Figure는 서로 독립적으로 분석됩니다. 한 Figure가 실패해도 다른 Figure의 결과는 유지됩니다.",
+                "Each Figure is analyzed independently. A failure in one Figure does not affect the others.",
             )
-
-        ai_figure_data = (
-            selected_language_data(
-                figures_record
-            )
-            if figures_record
-            else {}
         )
 
-        ai_figures = (
-            ai_figure_data.get(
-                "figures",
-                [],
+        figure_provider_ready = bool(
+            (
+                openai_key
+                and openai_sdk_available()
             )
-            if ai_figure_data
-            else []
+            or (
+                server_key
+                and sdk_available()
+            )
         )
+
+        analyzed_count = sum(
+            1
+            for source_item in extracted_study_figures
+            if get_single_figure_stage(
+                source_item,
+                depth,
+            )
+        )
+
+        if extracted_study_figures:
+            st.caption(
+                f"AI analyzed: {analyzed_count}/{len(extracted_study_figures)} · "
+                + (
+                    "OpenAI primary → Gemini fallback"
+                    if openai_key and openai_sdk_available()
+                    else "Gemini fallback"
+                )
+            )
 
         for source_item in (
             extracted_study_figures
         ):
-            ai_item = (
-                ai_figure_for_source(
+            figure_record = (
+                get_single_figure_stage(
                     source_item,
-                    ai_figures,
+                    depth,
                 )
             )
 
@@ -1745,10 +1786,159 @@ if core_record or extracted_study_figures:
                     )
                 )
 
-                if ai_item:
+                button_label = (
+                    L(
+                        lang,
+                        "✨ 이 Figure 분석하기",
+                        "✨ Analyze this Figure",
+                    )
+                    if not figure_record
+                    else L(
+                        lang,
+                        "🔄 이 Figure 다시 분석하기",
+                        "🔄 Re-analyze this Figure",
+                    )
+                )
+
+                if st.button(
+                    button_label,
+                    key=(
+                        "lal_single_figure_ai_"
+                        + str(
+                            source_item.get(
+                                "figure_key",
+                                source_item.get(
+                                    "figure_label",
+                                    "figure",
+                                ),
+                            )
+                        )
+                    ),
+                    type=(
+                        "primary"
+                        if not figure_record
+                        else "secondary"
+                    ),
+                    disabled=(
+                        not figure_provider_ready
+                    ),
+                ):
+                    with st.spinner(
+                        L(
+                            lang,
+                            f"{source_item.get('figure_label','Figure')}만 분석 중...",
+                            f"Analyzing only {source_item.get('figure_label','Figure')}...",
+                        )
+                    ):
+                        try:
+                            image_path = Path(
+                                source_item.get(
+                                    "image_path",
+                                    "",
+                                )
+                            )
+
+                            if not image_path.exists():
+                                raise FileNotFoundError(
+                                    f"Figure crop not found: {image_path}"
+                                )
+
+                            suffix = image_path.suffix.lower()
+                            mime_type = {
+                                ".jpg": "image/jpeg",
+                                ".jpeg": "image/jpeg",
+                                ".webp": "image/webp",
+                            }.get(
+                                suffix,
+                                "image/png",
+                            )
+
+                            (
+                                result,
+                                model,
+                                provider,
+                                usage,
+                            ) = analyze_single_figure(
+                                figure_label=(
+                                    source_item.get(
+                                        "figure_label",
+                                        "Figure",
+                                    )
+                                ),
+                                image_bytes=(
+                                    image_path.read_bytes()
+                                ),
+                                image_mime_type=mime_type,
+                                legend=(
+                                    source_item.get(
+                                        "caption",
+                                        "",
+                                    )
+                                ),
+                                core_bundle=(
+                                    core_record[
+                                        "data"
+                                    ]
+                                    if core_record
+                                    else {}
+                                ),
+                                openai_api_key=(
+                                    openai_key
+                                ),
+                                gemini_api_key=(
+                                    server_key
+                                ),
+                            )
+
+                            set_single_figure_stage(
+                                source_item,
+                                depth,
+                                result,
+                                model,
+                                provider,
+                                usage,
+                            )
+
+                            st.rerun()
+
+                        except Exception as exc:
+                            show_stage_error(
+                                source_item.get(
+                                    "figure_label",
+                                    "Figure",
+                                ),
+                                exc,
+                            )
+
+                if figure_record:
                     st.divider()
+                    model_badge(
+                        figure_record
+                    )
+
+                    usage = figure_record.get(
+                        "usage"
+                    ) or {}
+
+                    if usage.get(
+                        "total_tokens"
+                    ):
+                        st.caption(
+                            "Tokens: "
+                            f"{usage.get('input_tokens','?')} in + "
+                            f"{usage.get('output_tokens','?')} out = "
+                            f"{usage.get('total_tokens','?')} total"
+                        )
+
+                    figure_ai_data = (
+                        selected_language_data(
+                            figure_record
+                        )
+                        or {}
+                    )
+
                     render_ai_figure_analysis(
-                        ai_item
+                        figure_ai_data
                     )
 
         with st.expander(
@@ -2444,8 +2634,19 @@ all_records = {
     "core": core_record,
     "prerequisites": prereq_record,
     "experiments": experiments_record,
-    "figures": figures_record,
+    "figures_legacy": figures_record,
     "critical_learning": critical_record,
+}
+
+single_figure_records = {
+    str(
+        item.get(
+            "figure_key",
+            item.get("figure_label", "Figure"),
+        )
+    ): get_single_figure_stage(item, depth)
+    for item in extracted_study_figures
+    if get_single_figure_stage(item, depth)
 }
 
 export_data = {
@@ -2473,6 +2674,15 @@ export_data = {
             all_records.items()
         )
     },
+    "figure_analyses": {
+        key: {
+            "data": record.get("data"),
+            "model": record.get("model"),
+            "provider": record.get("provider"),
+            "usage": record.get("usage"),
+        }
+        for key, record in single_figure_records.items()
+    },
 }
 
 st.download_button(
@@ -2488,7 +2698,7 @@ st.download_button(
     ),
     file_name=(
         Path(paper_name).stem
-        + "_lalstudy_v032.json"
+        + "_lalstudy_v033.json"
     ),
     mime="application/json",
     use_container_width=True,

@@ -2,6 +2,21 @@
 
 All notable LALSTUDY updates will be recorded here.
 
+## [0.3.3-beta] - 2026-09-11
+
+### Figure AI
+- Removed the all-Figures-at-once AI workflow from the main Figure UI
+- Added one independent `Analyze this Figure` action below every Figure + source legend
+- Added OpenAI Responses API + structured-output Figure analysis
+- OpenAI model routing: `gpt-5.6-luna` → `gpt-5.6-terra`
+- Gemini remains a per-Figure fallback provider
+- Figure image + original legend + compact Core context are sent instead of the whole PDF
+- Each Figure result is cached independently
+- Added per-Figure provider/model badge and token usage when available
+- Export JSON now includes independent `figure_analyses` records
+
+All notable LALSTUDY updates will be recorded here.
+
 ## [0.3.2.1-beta] - 2026-09-11
 
 ### Knowledge Archive UX
