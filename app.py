@@ -3,7 +3,7 @@ from i18n import language_selector, L
 from knowledge_widget import render_knowledge_archive_widget
 from ai_provider import render_openai_usage_panel
 
-APP_VERSION = "v0.4.0-beta"
+APP_VERSION = "v0.4.1-beta"
 
 st.set_page_config(page_title="LALSTUDY", page_icon="🧬", layout="wide")
 lang = language_selector()

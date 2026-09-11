@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.1-beta] - 2026-09-12
+
+### OpenAI Usage UI
+- Replaced narrow three-column metrics with full-width token display
+- Added progress indicator for daily complimentary-token allowance
+- Changed service-tier-missing state from alarming warning to a clear official-usage / estimated-balance distinction
+- Added concise milestone patch notes to About
+
 ## [0.4.0-beta] - 2026-09-12
 
 ### OpenAI-only architecture

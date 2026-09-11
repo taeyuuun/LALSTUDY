@@ -3,7 +3,7 @@ from i18n import language_selector, L
 from knowledge_widget import render_knowledge_archive_widget
 from ai_provider import render_openai_usage_panel
 
-APP_VERSION = "v0.4.0-beta"
+APP_VERSION = "v0.4.1-beta"
 st.set_page_config(page_title="LALSTUDY · About",page_icon="ℹ️",layout="wide")
 lang=language_selector()
 
@@ -27,47 +27,75 @@ else:
 The current corpus-based features use approximately 1,000 **Nature Communications open-access papers retrieved with immunology-related search terms**. This is neither a complete immunology corpus nor a *Nature Immunology* corpus.
     """)
 
-st.header(L(lang,"버전 기록","Version History"))
+st.header(L(lang,"주요 패치노트","Major Patch Notes"))
+st.caption(L(lang,
+    "세부 hotfix를 모두 나열하기보다 사용자 경험이 크게 바뀐 milestone만 정리합니다.",
+    "This timeline highlights major user-facing milestones rather than every hotfix."
+))
+
 with st.container(border=True):
-    st.subheader("v0.4.0-beta")
+    st.subheader("v0.4.1-beta · Usage UI")
     st.markdown(L(lang,"""
-- AI provider를 OpenAI 하나로 단일화
-- Core / Plus / Figure / Knowledge Archive AI 호출을 OpenAI로 통합
-- Figure별 독립 분석 및 cache 유지
-- OpenAI 공식 Usage / Costs sync 유지
-- Gemini runtime 및 provider 선택 UI 제거
+- OpenAI Usage 숫자가 sidebar에서 잘리지 않도록 UI 재설계
+- 공식 usage와 무료 잔량 **추정치**를 명확히 구분
+- 사용량 / 일일 한도 / 요청 수 / 실제 과금액을 한눈에 표시
 ""","""
-- Unified all AI features under OpenAI only
-- Core / Plus / Figure / Knowledge Archive calls use the same OpenAI engine
-- Independent per-Figure analysis and caching retained
-- Official OpenAI Usage / Costs sync retained
-- Gemini runtime and provider-selection UI removed
+- Redesigned the OpenAI Usage sidebar so large numbers are never truncated
+- Clearly distinguishes official usage from an **estimated** complimentary balance
+- Shows usage / daily allowance / request count / billed cost at a glance
 """))
+
 with st.container(border=True):
-    st.subheader("v0.1.1-beta")
+    st.subheader("v0.4.0-beta · OpenAI Only")
     st.markdown(L(lang,"""
-- 한국어 / English 전역 언어 선택
-- 주요 UI 한영 전환
-- Learn a Paper 배경지식 설명 한영 전환
-- 실험기법 목적 설명 한영 전환
-- 원 논문 텍스트는 원문 유지
+- Gemini runtime 제거, 모든 AI 기능을 OpenAI로 단일화
+- Core / Plus / Figure / Knowledge Archive AI를 하나의 engine으로 통합
+- OpenAI Organization Usage / Costs 공식 sync 추가
 ""","""
-- Global Korean / English language selector
-- Bilingual primary UI
-- Bilingual prerequisite explanations in Learn a Paper
-- Bilingual experimental-method purpose explanations
-- Original paper text remains unchanged
+- Removed the Gemini runtime and unified all AI features under OpenAI
+- Core / Plus / Figure / Knowledge Archive now share one AI engine
+- Added official OpenAI Organization Usage / Costs sync
 """))
+
 with st.container(border=True):
-    st.subheader("v0.1.0-beta")
-    st.markdown("""
-- Initial integrated beta
-- Learn a Paper
-- Method Explorer
-- Figure Gallery / panel-aware interpretation
-- Panel crop beta
-- License-aware Figure display
-    """)
+    st.subheader("v0.3.x · Knowledge Archive & Learn UX")
+    st.markdown(L(lang,"""
+- Supabase 기반 재사용형 Knowledge Archive 구축
+- Archive를 전역 sidebar로 이동하고 용어를 하나씩 queue에 추가하도록 개선
+- Learn a Paper를 **Main(Core + Figures) / Plus** 계층으로 단순화
+- Figure별 독립 AI 분석 구조 도입
+""","""
+- Added a reusable Supabase-backed Knowledge Archive
+- Moved Archive to a global sidebar with one-concept-at-a-time queueing
+- Simplified Learn a Paper into **Main (Core + Figures) / Plus** layers
+- Introduced independent per-Figure AI analysis
+"""))
+
+with st.container(border=True):
+    st.subheader("v0.2.x · AI Deep Study & Figure Extraction")
+    st.markdown(L(lang,"""
+- Core / 선수지식 / 실험전략 / Figure / 비판적 읽기 AI 모듈 구축
+- AI 호출을 stage별로 분리해 실패 격리 및 cache 적용
+- 원본 PDF caption-anchor 기반 Figure crop engine 정착
+- Figure 이미지 + 원문 legend를 함께 학습하는 흐름 구축
+""","""
+- Added Core / prerequisites / experimental strategy / Figure / critical-reading AI modules
+- Split AI calls into stages for failure isolation and caching
+- Stabilized source-PDF caption-anchor Figure extraction
+- Paired Figure images with their original source legends
+"""))
+
+with st.container(border=True):
+    st.subheader("v0.1.x · Integrated Beta")
+    st.markdown(L(lang,"""
+- Learn a Paper / Method Explorer / Figure Explorer / Panel Crop 통합
+- 한국어 / English 전역 UI 지원
+- 약 1,000편 OA 논문 기반 Method ↔ Paper ↔ Figure 탐색
+""","""
+- Integrated Learn a Paper / Method Explorer / Figure Explorer / Panel Crop
+- Added global Korean / English UI
+- Enabled Method ↔ Paper ↔ Figure exploration over ~1,000 OA papers
+"""))
 
 st.header(L(lang,"로드맵","Roadmap"))
 st.markdown(L(lang,"""

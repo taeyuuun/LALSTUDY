@@ -2,7 +2,7 @@
 
 > Learn a paper, understand the experiment, and keep learning without losing context.
 
-**Current version: `v0.4.0-beta`**
+**Current version: `v0.4.1-beta`**
 
 ## v0.4.0 — OpenAI-only architecture
 
@@ -689,3 +689,11 @@ Never commit the real key. `.streamlit/secrets.toml` remains gitignored.
 - Clearly labelled estimate if the incentive tier is not exposed
 
 See `OPENAI_USAGE_SETUP.md`.
+
+
+## v0.4.1 — Usage UI polish
+
+- Full-width OpenAI token balance in the sidebar
+- No more truncated large numbers
+- Clear distinction between official usage and estimated complimentary balance
+- Concise milestone patch notes in About

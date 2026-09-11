@@ -122,37 +122,61 @@ def render_openai_usage_panel(*, lang: str = "ko") -> None:
                 remaining = official.get("complimentary_remaining_tokens")
                 requests_count = int(official.get("eligible_group_requests", 0) or 0)
                 exact = bool(official.get("complimentary_exact"))
+                budget = int(official.get("daily_budget", 0) or 0)
 
-                c1, c2, c3 = st.columns(3)
-                c1.metric(_L(lang, "무료 사용", "Free used"), f"{used:,}")
-                c2.metric(
-                    _L(lang, "무료 잔량", "Free left"),
-                    f"{remaining:,}" if remaining is not None else "—",
+                # Sidebar is narrow: avoid 3-column metrics, which truncate large numbers.
+                if remaining is not None:
+                    st.caption(
+                        _L(
+                            lang,
+                            "무료 잔량" if exact else "추정 무료 잔량",
+                            "Free tokens left" if exact else "Estimated free tokens left",
+                        )
+                    )
+                    st.markdown(f"### **{int(remaining):,} tokens**")
+
+                if budget > 0:
+                    ratio = min(max(used / budget, 0.0), 1.0)
+                    st.progress(ratio)
+                    st.caption(
+                        _L(lang, "오늘 사용", "Used today")
+                        + f"  **{used:,} / {budget:,} tokens**"
+                    )
+                else:
+                    st.write(
+                        _L(lang, "오늘 사용", "Used today")
+                        + f": **{used:,} tokens**"
+                    )
+
+                st.write(
+                    _L(lang, "요청", "Requests")
+                    + f": **{requests_count:,}**"
                 )
-                c3.metric(_L(lang, "요청", "Requests"), f"{requests_count:,}")
+
+                cost = official.get("today_cost_usd")
+                if cost is not None:
+                    st.write(
+                        _L(lang, "오늘 공식 과금", "Official billed cost today")
+                        + f": **${float(cost):.4f}**"
+                    )
 
                 if exact:
                     st.success(
                         _L(
                             lang,
-                            "🟢 OpenAI 공식 Usage API · incentive service tier 기준",
-                            "🟢 OpenAI official Usage API · incentive service tier",
+                            "🟢 공식 무료 token usage 확인됨",
+                            "🟢 Official complimentary-token usage confirmed",
                         )
                     )
                 else:
-                    st.warning(
+                    # The usage itself is official. Only the complimentary split is an estimate
+                    # because service_tier is not always surfaced in the Admin API response.
+                    st.info(
                         _L(
                             lang,
-                            "🟡 공식 usage는 동기화됐지만 incentive service tier가 응답에서 확인되지 않았습니다. 표시 잔량은 eligible-model usage 기반 추정입니다.",
-                            "🟡 Official usage synced, but the incentive service tier was not visible. Remaining usage is estimated from eligible-model usage.",
+                            "🟢 OpenAI 공식 usage 동기화 완료\n\n무료 잔량만 service tier 미노출로 인해 eligible-model usage 기준으로 계산한 추정치입니다.",
+                            "🟢 Official OpenAI usage synced\n\nOnly the complimentary balance is estimated from eligible-model usage because service tier was not exposed in the API response.",
                         )
-                    )
-
-                cost = official.get("today_cost_usd")
-                if cost is not None:
-                    st.caption(
-                        _L(lang, "오늘 공식 과금", "Official billed cost today")
-                        + f": ${float(cost):.4f}"
                     )
 
                 synced = official.get("synced_at_utc")
@@ -174,13 +198,17 @@ def render_openai_usage_panel(*, lang: str = "ko") -> None:
                 budget = openai_daily_budget()
                 remaining = max(budget - usage["total_tokens"], 0) if budget > 0 else None
 
-                c1, c2, c3 = st.columns(3)
-                c1.metric(_L(lang, "앱 추적 사용", "App-tracked"), f"{usage['total_tokens']:,}")
-                c2.metric(
-                    _L(lang, "추정 잔량", "Est. left"),
-                    f"{remaining:,}" if remaining is not None else "—",
+                st.caption(_L(lang, "앱 추적 추정 잔량", "App-tracked estimated balance"))
+                if remaining is not None:
+                    st.markdown(f"### **{remaining:,} tokens**")
+                st.write(
+                    _L(lang, "오늘 앱 추적 사용", "App-tracked usage today")
+                    + f": **{usage['total_tokens']:,} tokens**"
                 )
-                c3.metric(_L(lang, "호출", "Calls"), f"{usage['calls']:,}")
+                st.write(
+                    _L(lang, "호출", "Calls")
+                    + f": **{usage['calls']:,}**"
+                )
 
                 if not get_openai_admin_key():
                     st.info(
