@@ -2,7 +2,7 @@
 
 > Learn a paper, understand the experiment, and keep learning without losing context.
 
-**Current version: `v0.3.2-beta`**
+**Current version: `v0.3.2.1-beta`**
 
 LALSTUDY is an experimental scientific-paper learning platform that connects two workflows:
 
@@ -610,3 +610,27 @@ Figure crops exist first, then runs Figure AI analysis sequentially.
 
 Prerequisites, Experimental Strategy, and Critical Reading are visually and
 functionally demoted to optional Plus modules.
+
+
+## v0.3.2.1 — Sidebar Archive queue
+
+Knowledge Archive is now a persistent left-sidebar tool on every page.
+
+The user adds exactly one scientific term or phrase at a time:
+
+```text
+[ apoptotic stress ]
+[ + Add term ]
+
+Queued:
+- apoptotic stress
+- p53 conformational change
+
+[ Search Archive ]
+```
+
+Multi-word concepts are never split automatically. `apoptotic stress` remains
+one query unless the user explicitly adds `apoptotic` and `stress` separately.
+
+Search remains API-free. Archive MISSes can still be generated together in one
+explicit Gemini batch request.

@@ -2,6 +2,18 @@
 
 All notable LALSTUDY updates will be recorded here.
 
+## [0.3.2.1-beta] - 2026-09-11
+
+### Knowledge Archive UX
+- Moved the global Knowledge Archive into the persistent left sidebar
+- Replaced free-form multi-term parsing with one-term-at-a-time addition
+- Multi-word phrases such as `apoptotic stress` remain one concept
+- Added visible concept queue with per-item removal and clear-all controls
+- Archive search remains API-free
+- Only explicit MISS generation calls Gemini, still batched into one request
+
+All notable LALSTUDY updates will be recorded here.
+
 ## [0.3.2-beta] - 2026-09-11
 
 ### Learn a Paper

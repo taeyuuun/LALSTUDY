@@ -2,7 +2,7 @@ import streamlit as st
 from i18n import language_selector, L
 from knowledge_widget import render_knowledge_archive_widget
 
-APP_VERSION = "v0.3.2-beta"
+APP_VERSION = "v0.3.2.1-beta"
 
 st.set_page_config(page_title="LALSTUDY", page_icon="🧬", layout="wide")
 lang = language_selector()

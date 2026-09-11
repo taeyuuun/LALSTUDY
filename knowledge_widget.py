@@ -11,7 +11,6 @@ from knowledge_archive import (
     KnowledgeArchive,
     get_supabase_credentials,
     normalize_concept,
-    parse_concept_input,
     safe_supabase_diagnostics,
 )
 
@@ -63,6 +62,128 @@ def _archive_client(
         return None
 
 
+def _clean_one_term(
+    value: str,
+) -> str:
+    """
+    Treat the entire input as ONE concept/phrase.
+
+    Important UX rule:
+    "apoptotic stress" remains exactly one queue item.
+    We intentionally do NOT split on spaces, commas, or semicolons here.
+    """
+    value = (
+        value
+        or ""
+    ).strip()
+
+    value = " ".join(
+        value.split()
+    )
+
+    return value[:160]
+
+
+def _queue_key() -> str:
+    return (
+        "lal_global_archive_queue_v2"
+    )
+
+
+def _input_key() -> str:
+    return (
+        "lal_global_archive_single_input_v2"
+    )
+
+
+def _result_key() -> str:
+    return (
+        "lal_global_archive_result_v2"
+    )
+
+
+def _get_queue() -> List[str]:
+    queue = st.session_state.get(
+        _queue_key(),
+        [],
+    )
+
+    if not isinstance(
+        queue,
+        list,
+    ):
+        queue = []
+
+    return queue
+
+
+def _set_queue(
+    queue: List[str],
+):
+    st.session_state[
+        _queue_key()
+    ] = queue
+
+
+def _add_term(
+    value: str,
+):
+    term = _clean_one_term(
+        value
+    )
+
+    if not term:
+        return
+
+    queue = _get_queue()
+
+    normalized = {
+        normalize_concept(
+            item
+        )
+        for item in queue
+    }
+
+    if normalize_concept(
+        term
+    ) not in normalized:
+        queue.append(
+            term
+        )
+
+    _set_queue(
+        queue
+    )
+
+    # A changed queue invalidates the previous result.
+    st.session_state.pop(
+        _result_key(),
+        None,
+    )
+
+
+def _remove_term(
+    index: int,
+):
+    queue = _get_queue()
+
+    if (
+        0 <= index < len(queue)
+    ):
+        queue.pop(
+            index
+        )
+
+    _set_queue(
+        queue
+    )
+
+    st.session_state.pop(
+        _result_key(),
+        None,
+    )
+
+
 def _display_concept(
     *,
     data: Dict,
@@ -77,7 +198,7 @@ def _display_concept(
     )
 
     st.markdown(
-        f"### {canonical}"
+        f"**{canonical}**"
     )
 
     st.caption(
@@ -190,11 +311,11 @@ def render_knowledge_archive_widget(
     paper_context: str = "",
 ):
     """
-    Render a global, top-right Knowledge Archive popover.
+    Global left-sidebar Knowledge Archive.
 
-    Search is always API-free.
+    Users add EXACTLY one term/phrase at a time to a queue.
+    Archive search is API-free.
     Gemini is called only after an explicit MISS-generation click.
-    Session state is global so the query/results survive page navigation.
     """
 
     supabase_url, supabase_secret = (
@@ -220,127 +341,176 @@ def render_knowledge_archive_widget(
         )
     )
 
-    # The right column acts like a lightweight top-bar action.
-    _, action_col = st.columns(
-        [7.6, 2.4]
-    )
+    with st.sidebar:
+        st.divider()
 
-    with action_col:
-        label = (
-            "🧠 Knowledge Archive"
-            if connected
-            else "🧠 Archive ⚠"
-        )
-
-        with st.popover(
-            label,
-            use_container_width=True,
+        with st.expander(
+            (
+                "🧠 Knowledge Archive"
+                if connected
+                else "🧠 Knowledge Archive ⚠"
+            ),
+            expanded=True,
         ):
             st.caption(
                 _L(
                     lang,
-                    "어느 페이지에서든 scientific concept을 검색할 수 있습니다. 검색 자체는 Gemini API를 사용하지 않습니다.",
-                    "Search scientific concepts from any page. Archive search itself never calls Gemini.",
+                    "모르는 scientific term/phrase를 하나씩 추가하세요. 띄어쓰기가 포함된 표현도 하나의 용어로 유지됩니다.",
+                    "Add unfamiliar scientific terms/phrases one at a time. Multi-word phrases stay as one concept.",
                 )
             )
 
-            query = st.text_area(
-                _L(
-                    lang,
-                    "Concept 검색",
-                    "Search concepts",
-                ),
-                placeholder=_L(
-                    lang,
-                    "zinc homeostasis\np53 conformational change",
-                    "zinc homeostasis\np53 conformational change",
-                ),
-                height=90,
-                key=(
-                    "lal_global_archive_query"
-                ),
-                label_visibility=(
-                    "collapsed"
-                ),
-            )
+            # ------------------------------------------------
+            # ONE TERM / PHRASE INPUT
+            # ------------------------------------------------
+            with st.form(
+                "lal_archive_add_term_form_v2",
+                clear_on_submit=True,
+            ):
+                raw_term = st.text_input(
+                    _L(
+                        lang,
+                        "용어 / 구절",
+                        "Term / phrase",
+                    ),
+                    placeholder=(
+                        "apoptotic stress"
+                    ),
+                    key=_input_key(),
+                )
 
-            concepts = (
-                parse_concept_input(
-                    query
-                )[:8]
-            )
+                add_clicked = (
+                    st.form_submit_button(
+                        _L(
+                            lang,
+                            "➕ 용어 추가",
+                            "➕ Add term",
+                        ),
+                        use_container_width=True,
+                    )
+                )
 
-            search_clicked = st.button(
-                _L(
-                    lang,
-                    "🔎 Archive 검색",
-                    "🔎 Search Archive",
-                ),
-                use_container_width=True,
-                disabled=(
-                    not concepts
-                    or not connected
-                ),
-                key=(
-                    "lal_global_archive_search"
-                ),
-            )
+                if add_clicked:
+                    _add_term(
+                        raw_term
+                    )
 
-            result_key = (
-                "lal_global_archive_result"
-            )
+            queue = _get_queue()
 
-            if search_clicked:
-                try:
-                    lookup = (
-                        client.lookup_many(
-                            concepts
+            # ------------------------------------------------
+            # QUEUE
+            # ------------------------------------------------
+            if queue:
+                st.markdown(
+                    "**"
+                    + _L(
+                        lang,
+                        f"추가한 용어 · {len(queue)}",
+                        f"Queued terms · {len(queue)}",
+                    )
+                    + "**"
+                )
+
+                for index, term in enumerate(
+                    queue
+                ):
+                    text_col, remove_col = (
+                        st.columns(
+                            [5.7, 1.0]
                         )
                     )
 
-                    st.session_state[
-                        result_key
-                    ] = {
-                        "requested": (
-                            concepts
-                        ),
-                        "hits": (
-                            lookup.get(
-                                "hits",
-                                {},
-                            )
-                        ),
-                        "misses": (
-                            lookup.get(
-                                "misses",
-                                [],
-                            )
-                        ),
-                        "error": "",
-                    }
+                    with text_col:
+                        st.write(
+                            term
+                        )
 
-                except Exception as exc:
-                    st.session_state[
-                        result_key
-                    ] = {
-                        "requested": (
-                            concepts
-                        ),
-                        "hits": {},
-                        "misses": (
-                            concepts
-                        ),
-                        "error": str(
-                            exc
-                        ),
-                    }
+                    with remove_col:
+                        if st.button(
+                            "×",
+                            key=(
+                                f"lal_archive_remove_"
+                                f"{index}_"
+                                f"{normalize_concept(term)}"
+                            ),
+                            help=_L(
+                                lang,
+                                "이 용어 제거",
+                                "Remove this term",
+                            ),
+                            use_container_width=True,
+                        ):
+                            _remove_term(
+                                index
+                            )
+                            st.rerun()
 
+                queue_actions = (
+                    st.columns(2)
+                )
+
+                with queue_actions[0]:
+                    search_clicked = (
+                        st.button(
+                            _L(
+                                lang,
+                                "🔎 Archive 검색",
+                                "🔎 Search",
+                            ),
+                            type="primary",
+                            use_container_width=True,
+                            disabled=(
+                                not connected
+                            ),
+                            key=(
+                                "lal_archive_search_queue_v2"
+                            ),
+                        )
+                    )
+
+                with queue_actions[1]:
+                    if st.button(
+                        _L(
+                            lang,
+                            "비우기",
+                            "Clear",
+                        ),
+                        use_container_width=True,
+                        key=(
+                            "lal_archive_clear_queue_v2"
+                        ),
+                    ):
+                        _set_queue(
+                            []
+                        )
+
+                        st.session_state.pop(
+                            _result_key(),
+                            None,
+                        )
+
+                        st.rerun()
+
+            else:
+                search_clicked = False
+
+                st.caption(
+                    _L(
+                        lang,
+                        "예: `apoptotic stress` 전체를 한 번에 추가하면 하나의 concept으로 검색됩니다.",
+                        "Example: adding `apoptotic stress` keeps the full phrase as one concept.",
+                    )
+                )
+
+            # ------------------------------------------------
+            # CONNECTION DIAGNOSTICS
+            # ------------------------------------------------
             if not connected:
                 st.warning(
                     _L(
                         lang,
-                        "Knowledge Archive가 연결되지 않았습니다.",
-                        "Knowledge Archive is not connected.",
+                        "Archive DB 미연결",
+                        "Archive DB not connected",
                     )
                 )
 
@@ -396,9 +566,57 @@ def render_knowledge_archive_widget(
 
                 return
 
+            # ------------------------------------------------
+            # ARCHIVE LOOKUP
+            # ------------------------------------------------
+            if search_clicked:
+                try:
+                    lookup = (
+                        client.lookup_many(
+                            queue
+                        )
+                    )
+
+                    st.session_state[
+                        _result_key()
+                    ] = {
+                        "requested": list(
+                            queue
+                        ),
+                        "hits": (
+                            lookup.get(
+                                "hits",
+                                {},
+                            )
+                        ),
+                        "misses": (
+                            lookup.get(
+                                "misses",
+                                [],
+                            )
+                        ),
+                        "error": "",
+                    }
+
+                except Exception as exc:
+                    st.session_state[
+                        _result_key()
+                    ] = {
+                        "requested": list(
+                            queue
+                        ),
+                        "hits": {},
+                        "misses": list(
+                            queue
+                        ),
+                        "error": str(
+                            exc
+                        ),
+                    }
+
             result = (
                 st.session_state.get(
-                    result_key
+                    _result_key()
                 )
             )
 
@@ -406,11 +624,10 @@ def render_knowledge_archive_widget(
                 st.caption(
                     _L(
                         lang,
-                        "Archive HIT은 즉시 표시되고, MISS는 AI 생성 여부를 직접 선택할 수 있습니다.",
-                        "Archive HITs appear immediately; you choose whether MISSes should be generated by AI.",
+                        "검색은 API를 사용하지 않습니다. Archive MISS만 원할 때 AI로 생성할 수 있습니다.",
+                        "Search uses no AI API. Only Archive MISSes can be generated on demand.",
                     )
                 )
-
                 return
 
             if result.get(
@@ -458,7 +675,9 @@ def render_knowledge_archive_widget(
                 f"MISS {len(misses)}"
             )
 
-            # Show archive hits first.
+            # ------------------------------------------------
+            # DISPLAY HITS
+            # ------------------------------------------------
             for requested_term in (
                 requested
             ):
@@ -485,12 +704,15 @@ def render_knowledge_archive_widget(
 
                 st.divider()
 
+            # ------------------------------------------------
+            # GENERATE MISSES
+            # ------------------------------------------------
             if misses:
                 st.warning(
                     _L(
                         lang,
-                        "Archive에 없는 concept: ",
-                        "Not yet in Archive: ",
+                        "Archive에 없음: ",
+                        "Not in Archive: ",
                     )
                     + ", ".join(
                         misses
@@ -505,17 +727,16 @@ def render_knowledge_archive_widget(
                     st.button(
                         _L(
                             lang,
-                            f"✨ MISS {len(misses)}개 AI로 생성 + 저장",
-                            f"✨ Generate {len(misses)} MISSes + archive",
+                            f"✨ MISS {len(misses)}개 AI 생성 + 저장",
+                            f"✨ Generate {len(misses)} MISSes + save",
                         ),
-                        type="primary",
                         use_container_width=True,
                         disabled=(
                             not gemini_key
                             or not sdk_available()
                         ),
                         key=(
-                            "lal_global_archive_generate"
+                            "lal_archive_generate_queue_v2"
                         ),
                     )
                 )
@@ -523,7 +744,7 @@ def render_knowledge_archive_widget(
                 st.caption(
                     _L(
                         lang,
-                        "이 버튼을 누를 때만 Gemini request 1회가 발생합니다.",
+                        "이 버튼을 눌렀을 때만 Gemini request 1회가 발생합니다.",
                         "Gemini is called once only when this button is clicked.",
                     )
                 )
@@ -532,7 +753,7 @@ def render_knowledge_archive_widget(
                     with st.spinner(
                         _L(
                             lang,
-                            "MISS concept을 한 번에 생성 중...",
+                            "없는 개념을 한 번에 생성 중...",
                             "Generating missing concepts in one batch...",
                         )
                     ):
@@ -573,13 +794,8 @@ def render_knowledge_archive_widget(
                                         ),
                                     )
                                 except Exception:
-                                    # Displaying generated knowledge is more
-                                    # important than one persistence failure.
                                     pass
 
-                            # Re-query after insertion so the global widget
-                            # immediately enters the same Archive-HIT state
-                            # another user would see.
                             refreshed = (
                                 client.lookup_many(
                                     requested
@@ -587,7 +803,7 @@ def render_knowledge_archive_widget(
                             )
 
                             st.session_state[
-                                result_key
+                                _result_key()
                             ] = {
                                 "requested": (
                                     requested
@@ -610,7 +826,7 @@ def render_knowledge_archive_widget(
                             st.success(
                                 _L(
                                     lang,
-                                    f"{len(generated)}개 concept 생성 및 Archive 저장 완료",
+                                    f"{len(generated)}개 생성 및 Archive 저장 완료",
                                     f"Generated and archived {len(generated)} concepts",
                                 )
                             )
