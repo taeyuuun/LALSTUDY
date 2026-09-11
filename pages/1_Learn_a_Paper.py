@@ -40,7 +40,7 @@ from source_pdf_figure_extractor import (
     available as source_pdf_extractor_available,
 )
 
-APP_VERSION = "v0.2.5.6-beta"
+APP_VERSION = "v0.2.6-beta"
 METHOD_PROFILE_FILE = Path("method_profiles.json")
 
 st.set_page_config(
@@ -224,7 +224,7 @@ def get_study_figures(file_bytes, paper_hash):
 
 
 @st.cache_data(show_spinner=False)
-def get_source_pdf_figures(
+def get_source_pdf_figures_v2(
     file_bytes,
     paper_hash,
 ):
@@ -540,14 +540,14 @@ st.sidebar.caption(
 # ============================================================
 
 st.title(
-    "📄 Learn a Paper · Staged Deep Study"
+    "📄 Learn a Paper · Selective Deep Study"
 )
 
 st.caption(
     L(
         lang,
-        "먼저 논문의 핵심 논리만 빠르게 분석하고, 필요한 학습 모듈만 추가로 생성합니다.",
-        "Start with a lightweight core analysis, then generate only the deeper modules you need.",
+        "PDF를 올린 뒤 필요한 AI 분석만 먼저 선택합니다. Core Analysis는 더 이상 필수가 아닙니다.",
+        "Choose exactly which AI modules you want after uploading the PDF. Core Analysis is no longer mandatory.",
     )
 )
 
@@ -599,18 +599,22 @@ if not pdf_bytes:
     st.info(
         L(
             lang,
-            "PDF를 올리면 먼저 Core Analysis를 생성합니다.",
-            "Upload a PDF to begin with Core Analysis.",
+            "PDF를 올리면 사용할 AI 분석 module을 직접 선택할 수 있습니다.",
+            "Upload a PDF, then choose exactly which AI analysis modules to run.",
         )
     )
 
     st.code(
         """PDF
 ↓
-Core: Overview + Logic Map
+원하는 AI module 선택
+☐ Core
+☐ Prerequisites
+☐ Experiments
+☐ Figures
+☐ Critical Reading
 ↓
-Prerequisites / Experiments / Figures / Critical Reading
-(필요한 모듈만 생성)""",
+선택한 것만 API 호출""",
         language=None,
     )
 
@@ -702,7 +706,7 @@ mineru_token = get_mineru_token()
 # not expose reliable Figure captions.
 
 source_figure_state_key = (
-    "lal_source_pdf_figures:v1:"
+    "lal_source_pdf_figures:v2:"
     + active_hash()
 )
 
@@ -718,7 +722,7 @@ source_record = st.session_state.get(
 if source_record is None:
     try:
         source_figures = (
-            get_source_pdf_figures(
+            get_source_pdf_figures_v2(
                 pdf_bytes,
                 active_hash(),
             )
@@ -730,7 +734,7 @@ if source_record is None:
 
     source_record = {
         "engine": (
-            "source_pdf_caption_v1"
+            "source_pdf_caption_v2"
         ),
         "figures": source_figures,
     }
@@ -753,7 +757,7 @@ if source_record.get(
     )
 
     figure_extraction_engine = (
-        "source_pdf_caption_v1"
+        "source_pdf_caption_v2"
     )
 
 elif mineru_record:
@@ -796,118 +800,13 @@ if len(paper_text) < 500:
 
 
 # ============================================================
-# CORE
+# SELECTIVE AI ANALYSIS PLAN
 # ============================================================
 
 core_record = get_stage(
     "core",
     depth,
 )
-
-st.divider()
-
-if not core_record:
-    st.subheader(
-        L(
-            lang,
-            "1️⃣ Core Analysis",
-            "1️⃣ Core Analysis",
-        )
-    )
-
-    st.write(
-        L(
-            lang,
-            "처음에는 **한눈에 보기 + 논리 지도**만 생성합니다. 이전처럼 모든 분석을 한 요청에 몰아넣지 않습니다.",
-            "The first request generates only the **overview + logic map** instead of forcing every analysis into one giant request.",
-        )
-    )
-
-    can_run = bool(
-        server_key
-        and sdk_available()
-        and len(paper_text) >= 200
-    )
-
-    if not server_key:
-        st.error(
-            L(
-                lang,
-                "서버 Gemini API key가 설정되지 않았습니다.",
-                "Server Gemini API key is not configured.",
-            )
-        )
-
-    if st.button(
-        L(
-            lang,
-            "✨ Core Analysis 시작",
-            "✨ Start Core Analysis",
-        ),
-        type="primary",
-        use_container_width=True,
-        disabled=not can_run,
-    ):
-        with st.spinner(
-            L(
-                lang,
-                "논문의 핵심 질문과 논리 흐름을 분석 중...",
-                "Analyzing the paper's core question and logic...",
-            )
-        ):
-            try:
-                result, model = analyze_core(
-                    paper_text=paper_text,
-                    api_key=server_key,
-                    depth=depth,
-                    detected_methods=[
-                        name
-                        for name, _
-                        in rule_methods.most_common(25)
-                    ],
-                )
-
-                set_stage(
-                    "core",
-                    depth,
-                    result,
-                    model,
-                )
-
-                st.rerun()
-
-            except Exception as exc:
-                show_stage_error(
-                    "Core Analysis",
-                    exc,
-                )
-
-    st.stop()
-
-
-core_data = selected_language_data(
-    core_record
-)
-
-overview = core_data.get(
-    "overview",
-    {},
-)
-
-st.success(
-    L(
-        lang,
-        "Core Analysis 완료. 이제 필요한 심화 모듈만 선택해서 생성할 수 있습니다.",
-        "Core Analysis complete. Generate only the deeper modules you need.",
-    )
-)
-model_badge(core_record)
-
-
-# ============================================================
-# MODULE STATUS
-# ============================================================
-
 prereq_record = get_stage(
     "prerequisites",
     depth,
@@ -925,42 +824,505 @@ critical_record = get_stage(
     depth,
 )
 
+st.divider()
+
 st.subheader(
     L(
         lang,
-        "Deep Study Modules",
-        "Deep Study Modules",
+        "✨ 이번에 사용할 AI 분석 선택",
+        "✨ Choose AI analysis for this run",
     )
 )
 
-module_cols = st.columns(4)
+st.caption(
+    L(
+        lang,
+        "각 module은 서로 독립적입니다. 예를 들어 Figures만 선택하면 Core Analysis API는 호출하지 않습니다. 이미 생성된 module은 다시 호출하지 않습니다.",
+        "Modules are independent. If you select only Figures, Core Analysis is not called. Already-generated modules are reused without another API request.",
+    )
+)
+
+plan_cols = st.columns(5)
+
+with plan_cols[0]:
+    plan_core = st.checkbox(
+        L(
+            lang,
+            "🎯 Core",
+            "🎯 Core",
+        ),
+        value=False,
+        key="lal_plan_core",
+        help=L(
+            lang,
+            "Overview + Logic Map",
+            "Overview + Logic Map",
+        ),
+    )
+
+with plan_cols[1]:
+    plan_prereq = st.checkbox(
+        L(
+            lang,
+            "🧠 선수지식",
+            "🧠 Prerequisites",
+        ),
+        value=False,
+        key="lal_plan_prereq",
+    )
+
+with plan_cols[2]:
+    plan_experiments = st.checkbox(
+        L(
+            lang,
+            "🔬 실험 전략",
+            "🔬 Experiments",
+        ),
+        value=False,
+        key="lal_plan_experiments",
+    )
+
+with plan_cols[3]:
+    plan_figures = st.checkbox(
+        "🖼 Figures",
+        value=False,
+        key="lal_plan_figures",
+    )
+
+with plan_cols[4]:
+    plan_critical = st.checkbox(
+        L(
+            lang,
+            "🧐 비판적 읽기",
+            "🧐 Critical",
+        ),
+        value=False,
+        key="lal_plan_critical",
+    )
+
+selected_plan = []
+
+if plan_core:
+    selected_plan.append(
+        "core"
+    )
+
+if plan_prereq:
+    selected_plan.append(
+        "prerequisites"
+    )
+
+if plan_experiments:
+    selected_plan.append(
+        "experiments"
+    )
+
+if plan_figures:
+    selected_plan.append(
+        "figures"
+    )
+
+if plan_critical:
+    selected_plan.append(
+        "critical_learning"
+    )
+
+record_map = {
+    "core": core_record,
+    "prerequisites": prereq_record,
+    "experiments": experiments_record,
+    "figures": figures_record,
+    "critical_learning": critical_record,
+}
+
+pending_plan = [
+    module
+    for module in selected_plan
+    if not record_map.get(
+        module
+    )
+]
+
+if selected_plan:
+    st.info(
+        L(
+            lang,
+            f"선택 {len(selected_plan)}개 · 새 API request 최대 {len(pending_plan)}개 · 기존 결과는 자동 재사용",
+            f"{len(selected_plan)} selected · up to {len(pending_plan)} new API requests · cached results are reused",
+        )
+    )
+else:
+    st.caption(
+        L(
+            lang,
+            "원하는 module을 하나 이상 선택하세요.",
+            "Select one or more modules.",
+        )
+    )
+
+can_run_selected = bool(
+    selected_plan
+    and server_key
+    and sdk_available()
+)
+
+if not server_key:
+    st.error(
+        L(
+            lang,
+            "서버 Gemini API key가 설정되지 않았습니다.",
+            "Server Gemini API key is not configured.",
+        )
+    )
+
+run_selected = st.button(
+    L(
+        lang,
+        "✨ 선택한 분석 실행",
+        "✨ Run selected analyses",
+    ),
+    type="primary",
+    use_container_width=True,
+    disabled=not can_run_selected,
+)
+
+if run_selected:
+    total = max(
+        1,
+        len(selected_plan),
+    )
+
+    progress = st.progress(
+        0
+    )
+
+    status = st.empty()
+
+    successes = []
+    skipped = []
+    failures = []
+
+    for index, module in enumerate(
+        selected_plan,
+        start=1,
+    ):
+        current = get_stage(
+            module,
+            depth,
+        )
+
+        if current:
+            skipped.append(
+                module
+            )
+
+            progress.progress(
+                index / total
+            )
+
+            continue
+
+        display_names = {
+            "core": "Core",
+            "prerequisites": (
+                "Prerequisites"
+            ),
+            "experiments": (
+                "Experiments"
+            ),
+            "figures": "Figures",
+            "critical_learning": (
+                "Critical Reading"
+            ),
+        }
+
+        status.info(
+            L(
+                lang,
+                f"{display_names[module]} 분석 중... ({index}/{total})",
+                f"Analyzing {display_names[module]}... ({index}/{total})",
+            )
+        )
+
+        # Context is opportunistic, never mandatory.
+        # If Core/Experiments exist, later modules can use them.
+        # Otherwise they analyze the paper directly.
+        core_context_record = get_stage(
+            "core",
+            depth,
+        )
+
+        core_context = (
+            core_context_record.get(
+                "data",
+                {},
+            )
+            if core_context_record
+            else {}
+        )
+
+        experiment_context_record = (
+            get_stage(
+                "experiments",
+                depth,
+            )
+        )
+
+        experiment_context = (
+            experiment_context_record.get(
+                "data",
+                {},
+            )
+            if experiment_context_record
+            else None
+        )
+
+        try:
+            if module == "core":
+                result, model = (
+                    analyze_core(
+                        paper_text=paper_text,
+                        api_key=server_key,
+                        depth=depth,
+                        detected_methods=[
+                            name
+                            for name, _
+                            in rule_methods.most_common(
+                                25
+                            )
+                        ],
+                    )
+                )
+
+            elif module == "prerequisites":
+                result, model = (
+                    analyze_prerequisites(
+                        paper_text=paper_text,
+                        core_bundle=core_context,
+                        api_key=server_key,
+                        depth=depth,
+                    )
+                )
+
+            elif module == "experiments":
+                result, model = (
+                    analyze_experiments(
+                        paper_text=paper_text,
+                        core_bundle=core_context,
+                        api_key=server_key,
+                        detected_methods=[
+                            name
+                            for name, _
+                            in rule_methods.most_common(
+                                30
+                            )
+                        ],
+                    )
+                )
+
+            elif module == "figures":
+                result, model = (
+                    analyze_figures(
+                        pdf_bytes=pdf_bytes,
+                        core_bundle=core_context,
+                        api_key=server_key,
+                    )
+                )
+
+            elif module == "critical_learning":
+                result, model = (
+                    analyze_critical_learning(
+                        paper_text=paper_text,
+                        core_bundle=core_context,
+                        experiments_bundle=experiment_context,
+                        api_key=server_key,
+                        depth=depth,
+                    )
+                )
+
+            else:
+                continue
+
+            set_stage(
+                module,
+                depth,
+                result,
+                model,
+            )
+
+            successes.append(
+                module
+            )
+
+        except Exception as exc:
+            failures.append(
+                (
+                    module,
+                    exc,
+                )
+            )
+
+        progress.progress(
+            index / total
+        )
+
+    # Refresh records immediately; no forced rerun is needed.
+    core_record = get_stage(
+        "core",
+        depth,
+    )
+    prereq_record = get_stage(
+        "prerequisites",
+        depth,
+    )
+    experiments_record = get_stage(
+        "experiments",
+        depth,
+    )
+    figures_record = get_stage(
+        "figures",
+        depth,
+    )
+    critical_record = get_stage(
+        "critical_learning",
+        depth,
+    )
+
+    if failures:
+        status.warning(
+            L(
+                lang,
+                f"{len(successes)}개 완료 · {len(failures)}개 실패. 성공한 결과는 그대로 저장되었습니다.",
+                f"{len(successes)} completed · {len(failures)} failed. Successful results were preserved.",
+            )
+        )
+
+        for module, exc in failures:
+            show_stage_error(
+                module,
+                exc,
+            )
+
+    elif pending_plan:
+        status.success(
+            L(
+                lang,
+                "선택한 새 분석이 완료되었습니다.",
+                "Selected new analyses completed.",
+            )
+        )
+
+    else:
+        status.success(
+            L(
+                lang,
+                "선택한 분석은 이미 생성되어 있어 API를 다시 호출하지 않았습니다.",
+                "All selected analyses were already cached; no API call was made.",
+            )
+        )
+
+core_data = (
+    selected_language_data(
+        core_record
+    )
+    or {}
+)
+
+overview = core_data.get(
+    "overview",
+    {},
+)
+
+# ============================================================
+# MODULE STATUS
+# ============================================================
+
+# Refresh once more in case an individual module was generated on this run.
+core_record = get_stage(
+    "core",
+    depth,
+)
+prereq_record = get_stage(
+    "prerequisites",
+    depth,
+)
+experiments_record = get_stage(
+    "experiments",
+    depth,
+)
+figures_record = get_stage(
+    "figures",
+    depth,
+)
+critical_record = get_stage(
+    "critical_learning",
+    depth,
+)
+
+core_data = (
+    selected_language_data(
+        core_record
+    )
+    or {}
+)
+
+overview = core_data.get(
+    "overview",
+    {},
+)
+
+st.subheader(
+    L(
+        lang,
+        "Analysis Status",
+        "Analysis Status",
+    )
+)
+
+module_cols = st.columns(
+    5
+)
 
 module_info = [
     (
         module_cols[0],
-        "🧠",
-        L(lang, "선수지식", "Prerequisites"),
-        prereq_record,
+        "🎯",
+        "Core",
+        core_record,
     ),
     (
         module_cols[1],
-        "🔬",
-        L(lang, "실험 전략", "Experiments"),
-        experiments_record,
+        "🧠",
+        L(
+            lang,
+            "선수지식",
+            "Prerequisites",
+        ),
+        prereq_record,
     ),
     (
         module_cols[2],
+        "🔬",
+        L(
+            lang,
+            "실험 전략",
+            "Experiments",
+        ),
+        experiments_record,
+    ),
+    (
+        module_cols[3],
         "🖼",
         "Figures",
         figures_record,
     ),
     (
-        module_cols[3],
+        module_cols[4],
         "🧐",
         L(
             lang,
             "비판적 읽기",
-            "Critical Reading",
+            "Critical",
         ),
         critical_record,
     ),
@@ -981,17 +1343,21 @@ for col, icon, label, record in (
                 st.success(
                     L(
                         lang,
-                        "생성 완료",
+                        "완료",
                         "Ready",
                     )
                 )
-                model_badge(record)
+
+                model_badge(
+                    record
+                )
+
             else:
                 st.caption(
                     L(
                         lang,
-                        "아직 생성 안 함",
-                        "Not generated yet",
+                        "미생성",
+                        "Not generated",
                     )
                 )
 
@@ -1037,6 +1403,15 @@ tabs = st.tabs(
 # ============================================================
 
 with tabs[0]:
+    if not core_record:
+        st.info(
+            L(
+                lang,
+                "Core Analysis를 생성하지 않았습니다. 위에서 Core를 선택하거나 다른 module만 사용해도 됩니다.",
+                "Core Analysis has not been generated. Select Core above if you want it; other modules work independently.",
+            )
+        )
+
     st.header(
         overview.get(
             "title",
@@ -1136,6 +1511,15 @@ with tabs[1]:
             "🧭 Paper Logic Map",
         )
     )
+
+    if not core_record:
+        st.info(
+            L(
+                lang,
+                "Logic Map은 Core module을 선택했을 때 생성됩니다.",
+                "The Logic Map is generated only when the Core module is selected.",
+            )
+        )
 
     st.caption(
         L(
@@ -1249,7 +1633,7 @@ with tabs[2]:
                     result, model = (
                         analyze_prerequisites(
                             paper_text=paper_text,
-                            core_bundle=core_record["data"],
+                            core_bundle=(core_record["data"] if core_record else {}),
                             api_key=server_key,
                             depth=depth,
                         )
@@ -1374,7 +1758,7 @@ with tabs[3]:
                     result, model = (
                         analyze_experiments(
                             paper_text=paper_text,
-                            core_bundle=core_record["data"],
+                            core_bundle=(core_record["data"] if core_record else {}),
                             api_key=server_key,
                             detected_methods=[
                                 name
@@ -1594,10 +1978,10 @@ with tabs[4]:
             L(
                 lang,
                 "원본 PDF caption-anchor 추출 결과를 사용 중입니다."
-                if figure_extraction_engine == "source_pdf_caption_v1"
+                if figure_extraction_engine == "source_pdf_caption_v2"
                 else f"Fallback engine 사용 중: {figure_extraction_engine}",
                 "Using direct original-PDF caption-anchor extraction."
-                if figure_extraction_engine == "source_pdf_caption_v1"
+                if figure_extraction_engine == "source_pdf_caption_v2"
                 else f"Using fallback engine: {figure_extraction_engine}",
             )
         )
@@ -1631,7 +2015,7 @@ with tabs[4]:
                         source_figure_state_key
                     ] = {
                         "engine": (
-                            "source_pdf_caption_v1"
+                            "source_pdf_caption_v2"
                         ),
                         "figures": figures,
                     }
@@ -1753,8 +2137,8 @@ with tabs[4]:
         st.caption(
             L(
                 lang,
-                "먼저 위에서 Figure 이미지를 준비하는 것을 권장합니다.",
-                "Prepare the Figure images above first.",
+                "Figure 이미지는 PDF에서 자동 준비됩니다. AI Figure 해석은 Core 없이도 단독 실행할 수 있습니다.",
+                "Figure images are prepared from the PDF automatically. AI Figure interpretation can run without Core.",
             )
         )
 
@@ -1780,7 +2164,7 @@ with tabs[4]:
                     result, model = (
                         analyze_figures(
                             pdf_bytes=pdf_bytes,
-                            core_bundle=core_record["data"],
+                            core_bundle=(core_record["data"] if core_record else {}),
                             api_key=server_key,
                         )
                     )
@@ -2038,7 +2422,7 @@ with tabs[5]:
                     result, model = (
                         analyze_critical_learning(
                             paper_text=paper_text,
-                            core_bundle=core_record["data"],
+                            core_bundle=(core_record["data"] if core_record else {}),
                             experiments_bundle=(
                                 experiments_record["data"]
                                 if experiments_record

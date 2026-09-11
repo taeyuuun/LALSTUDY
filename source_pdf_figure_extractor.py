@@ -10,7 +10,7 @@ except Exception:
     fitz = None
 
 
-EXTRACTOR_VERSION = "1"
+EXTRACTOR_VERSION = "2"
 
 CAPTION_START_RE = re.compile(
     r"^\s*(?:fig(?:ure)?\.?\s*)(\d+)\b",
@@ -40,6 +40,16 @@ def _figure_key(number: str) -> str:
 
 
 def _looks_like_prose(text: str) -> bool:
+    """
+    Distinguish real article prose from text embedded inside a Figure.
+
+    Scientific Figures can contain 20+ whitespace tokens because of axis values,
+    lane labels and concentrations (e.g. "0 0.5 1 2 ..."). Counting tokens and
+    punctuation alone therefore caused Figure internals to be mistaken for prose
+    and pushed the crop boundary downward.
+
+    Real prose must contain a meaningful density of alphabetic words.
+    """
     text = (text or "").strip()
 
     if CAPTION_START_RE.match(text):
@@ -48,6 +58,21 @@ def _looks_like_prose(text: str) -> bool:
     words = text.split()
 
     if len(words) < 20:
+        return False
+
+    alpha_words = re.findall(
+        r"\b[A-Za-z][A-Za-z-]{2,}\b",
+        text,
+    )
+
+    if len(alpha_words) < 10:
+        return False
+
+    if (
+        len(alpha_words)
+        / max(1, len(words))
+        < 0.35
+    ):
         return False
 
     punctuation = sum(
@@ -323,7 +348,7 @@ def extract_figures_from_source_pdf(
     *,
     pdf_bytes: bytes,
     paper_hash: str,
-    cache_root: str = "figure_cache/source_pdf_v1",
+    cache_root: str = "figure_cache/source_pdf_v2",
     force: bool = False,
 ) -> List[Dict]:
     """
@@ -371,7 +396,7 @@ def extract_figures_from_source_pdf(
                 and payload.get(
                     "engine"
                 )
-                == "source_pdf_caption_v1"
+                == "source_pdf_caption_v2"
             ):
                 figures = payload.get(
                     "figures",
@@ -438,7 +463,7 @@ def extract_figures_from_source_pdf(
                         "bbox"
                     ],
                     "engine": (
-                        "source_pdf_caption_v1"
+                        "source_pdf_caption_v2"
                     ),
                     "asset_mode": (
                         "original_pdf_caption_anchor_direct"
@@ -456,7 +481,7 @@ def extract_figures_from_source_pdf(
         json.dumps(
             {
                 "engine": (
-                    "source_pdf_caption_v1"
+                    "source_pdf_caption_v2"
                 ),
                 "extractor_version": (
                     EXTRACTOR_VERSION

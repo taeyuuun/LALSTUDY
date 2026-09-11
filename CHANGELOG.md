@@ -2,6 +2,22 @@
 
 All notable LALSTUDY updates will be recorded here.
 
+## [0.2.6-beta] - 2026-09-11
+
+### UX
+- Added upfront AI-module selection
+- Core Analysis is no longer mandatory
+- Users may run only Figures, only Prerequisites, or any combination
+- Cached modules are skipped automatically
+- UI shows the maximum number of new API requests before execution
+
+### Figure extraction
+- Source PDF extractor v2 distinguishes article prose from numeric/axis Figure text
+- Fixed Fig. 6 A/B being cut off in the XAF1–MT2A PNAS test PDF
+- New source-PDF cache namespace prevents reuse of the old crop
+
+All notable LALSTUDY updates will be recorded here.
+
 ## [0.2.5.6-beta] - 2026-09-11
 
 ### Architecture

@@ -2,7 +2,7 @@
 
 > Learn a paper, understand the experiment, and keep learning without losing context.
 
-**Current version: `v0.2.5.6-beta`**
+**Current version: `v0.2.6-beta`**
 
 LALSTUDY is an experimental scientific-paper learning platform that connects two workflows:
 
@@ -466,3 +466,32 @@ This path:
 
 MinerU remains available only as a fallback for PDFs with poor/no usable text
 layers or nonstandard caption structures.
+
+
+## v0.2.6 — Selective AI Analysis
+
+Core Analysis is no longer a mandatory gateway.
+
+After uploading a PDF, users choose exactly which AI modules should run:
+
+```text
+☐ Core: Overview + Logic Map
+☐ Prerequisites
+☐ Experiments
+☐ Figures
+☐ Critical Reading + Learn Next
+              ↓
+       Run selected analyses
+```
+
+Each selected module is an independent API request and existing cached results
+are reused. Selecting only `Figures` therefore makes **zero Core API calls**.
+
+### Figure crop fix
+
+Source-PDF extractor v2 now requires a meaningful density of alphabetic words
+before a text block can be treated as article prose. Numeric axis/lane-label
+blocks inside scientific Figures no longer push the crop boundary downward.
+
+This fixes the uploaded PNAS test case where Fig. 6 panels A/B were previously
+cut off while C-F remained visible.
