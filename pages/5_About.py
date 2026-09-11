@@ -1,9 +1,12 @@
 import streamlit as st
 from i18n import language_selector, L
+from knowledge_widget import render_knowledge_archive_widget
 
-APP_VERSION="v0.1.1-beta"
+APP_VERSION = "v0.3.1-beta"
 st.set_page_config(page_title="LALSTUDY · About",page_icon="ℹ️",layout="wide")
 lang=language_selector()
+
+render_knowledge_archive_widget(lang=lang)
 
 st.title(L(lang,"ℹ️ LALSTUDY 소개","ℹ️ About LALSTUDY"))
 st.caption(L(lang,f"현재 버전: {APP_VERSION}",f"Current version: {APP_VERSION}"))

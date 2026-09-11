@@ -1,10 +1,13 @@
 import streamlit as st
 from i18n import language_selector, L
+from knowledge_widget import render_knowledge_archive_widget
 
-APP_VERSION = "v0.3.0.1-beta"
+APP_VERSION = "v0.3.1-beta"
 
 st.set_page_config(page_title="LALSTUDY", page_icon="🧬", layout="wide")
 lang = language_selector()
+
+render_knowledge_archive_widget(lang=lang)
 
 st.title("🧬 LALSTUDY")
 st.caption(f"Scientific paper learning & experimental method explorer · {APP_VERSION}")

@@ -2,7 +2,7 @@
 
 > Learn a paper, understand the experiment, and keep learning without losing context.
 
-**Current version: `v0.3.0.1-beta`**
+**Current version: `v0.3.1-beta`**
 
 LALSTUDY is an experimental scientific-paper learning platform that connects two workflows:
 
@@ -550,3 +550,26 @@ showing:
 - whether a client was created
 - whether the `knowledge_concepts` table ping succeeded
 - the exact Supabase error message
+
+
+## v0.3.1 — Global Knowledge Archive widget
+
+Knowledge Archive is no longer a large section inside `Learn a Paper`.
+
+It is now available from every LALSTUDY page as a compact top-right popover:
+
+```text
+                              [🧠 Knowledge Archive]
+                                      ↓
+                              Archive-only search
+                                      ↓
+                         HIT → immediate, zero Gemini
+                         MISS → explicit AI generation
+```
+
+Archive search never triggers Gemini automatically. Missing concepts are sent
+to Gemini only when the user explicitly clicks `Generate MISSes + archive`,
+and all current MISSes are batched into one request.
+
+The query and search state live in global Streamlit session state, so they
+remain available while navigating between LALSTUDY pages.

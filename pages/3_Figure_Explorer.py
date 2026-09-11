@@ -9,6 +9,7 @@ import math
 import re
 import html
 from i18n import language_selector, L
+from knowledge_widget import render_knowledge_archive_widget
 
 DATA_FILE = Path("method_profiles.json")
 IMAGE_INDEX_FILE = Path("figure_images.json")
@@ -588,6 +589,8 @@ def build_panel_card(panel_text, figure_level_method):
     }
 
 lang = language_selector()
+
+render_knowledge_archive_widget(lang=lang)
 
 st.title(L(lang,"🧬 실험 Figure Explorer","🧬 Experimental Figure Explorer"))
 st.caption(L(lang,

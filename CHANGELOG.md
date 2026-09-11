@@ -2,6 +2,22 @@
 
 All notable LALSTUDY updates will be recorded here.
 
+## [0.3.1-beta] - 2026-09-11
+
+### UX
+- Moved Knowledge Archive out of the Learn a Paper body
+- Added a top-right global Knowledge Archive popover to every page
+- Archive query/results persist while navigating between pages
+- Search itself never calls Gemini
+- Archive MISS generation requires an explicit user click
+- Multiple MISSes remain batched into one Gemini request
+
+### Cleanup
+- Removed duplicate Learn a Paper Archive UI/backend wiring
+- Fixed stale About-page version display
+
+All notable LALSTUDY updates will be recorded here.
+
 ## [0.3.0.1-beta] - 2026-09-11
 
 ### Fixed

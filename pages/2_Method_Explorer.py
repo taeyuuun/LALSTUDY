@@ -5,6 +5,7 @@ import requests
 import streamlit as st
 from pathlib import Path
 from i18n import language_selector, L
+from knowledge_widget import render_knowledge_archive_widget
 
 DATA_FILE = Path("method_profiles.json")
 IMAGE_INDEX_FILE = Path("figure_images.json")
@@ -152,6 +153,8 @@ def find_cached_image(pmcid, href):
 # ============================================================
 
 lang = language_selector()
+
+render_knowledge_archive_widget(lang=lang)
 
 st.title(L(lang,"🧬 실험기법 Explorer","🧬 Experimental Method Explorer"))
 st.caption(

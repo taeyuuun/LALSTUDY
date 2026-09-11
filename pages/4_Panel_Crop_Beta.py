@@ -7,6 +7,7 @@ import numpy as np
 from PIL import Image, ImageOps
 import streamlit as st
 from i18n import language_selector, L
+from knowledge_widget import render_knowledge_archive_widget
 
 # ============================================================
 # FILES
@@ -614,6 +615,8 @@ def crop_panel(
 # ============================================================
 
 lang = language_selector()
+
+render_knowledge_archive_widget(lang=lang)
 
 st.title(L(lang,"✂️ Experimental Panel Crop Explorer","✂️ Experimental Panel Crop Explorer"))
 
