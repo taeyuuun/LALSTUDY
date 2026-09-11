@@ -5,7 +5,6 @@ import streamlit as st
 
 from ai_router import explain_concepts_batch
 from ai_provider import (
-    render_ai_provider_panel,
     get_provider_api_key,
     provider_ready,
     provider_label,
@@ -301,7 +300,8 @@ def render_knowledge_archive_widget(
     Gemini is called only after an explicit MISS-generation click.
     """
 
-    selected_provider = render_ai_provider_panel(lang=lang)
+    from ai_provider import get_selected_provider
+    selected_provider = get_selected_provider()
     provider_key = get_provider_api_key(selected_provider)
 
     supabase_url, supabase_secret = (

@@ -1,6 +1,13 @@
 # Changelog
 
 
+## [0.3.4.2-beta] - 2026-09-12
+
+### Hotfix
+- AI Engine sidebar is now rendered explicitly on every page instead of indirectly through Knowledge Archive.
+- Prevents mixed/partial deployments from hiding the provider selector and usage panel.
+
+
 ## [0.3.4.1-beta] - 2026-09-12
 
 ### Global AI provider

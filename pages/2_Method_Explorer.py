@@ -6,6 +6,7 @@ import streamlit as st
 from pathlib import Path
 from i18n import language_selector, L
 from knowledge_widget import render_knowledge_archive_widget
+from ai_provider import render_ai_provider_panel
 
 DATA_FILE = Path("method_profiles.json")
 IMAGE_INDEX_FILE = Path("figure_images.json")
@@ -153,6 +154,8 @@ def find_cached_image(pmcid, href):
 # ============================================================
 
 lang = language_selector()
+
+render_ai_provider_panel(lang=lang)
 
 render_knowledge_archive_widget(lang=lang)
 

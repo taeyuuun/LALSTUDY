@@ -1,10 +1,13 @@
 import streamlit as st
 from i18n import language_selector, L
 from knowledge_widget import render_knowledge_archive_widget
+from ai_provider import render_ai_provider_panel
 
-APP_VERSION = "v0.3.4.1-beta"
+APP_VERSION = "v0.3.4.2-beta"
 st.set_page_config(page_title="LALSTUDY · About",page_icon="ℹ️",layout="wide")
 lang=language_selector()
+
+render_ai_provider_panel(lang=lang)
 
 render_knowledge_archive_widget(lang=lang)
 
