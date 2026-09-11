@@ -1,8 +1,4 @@
-"""Provider router for LALSTUDY AI calls.
-
-The selected provider is explicit: Gemini stays Gemini, OpenAI stays OpenAI.
-There is no silent cross-provider fallback.
-"""
+"""OpenAI-only AI engine for LALSTUDY."""
 
 from __future__ import annotations
 
@@ -15,56 +11,32 @@ from typing import List, Optional, Type
 
 from pydantic import BaseModel
 
-import ai_engine as gemini_engine
+import ai_engine as engine
 
 try:
     from openai import OpenAI
 except Exception:
     OpenAI = None
 
-
-OPENAI_TEXT_MODELS = [
-    x.strip()
-    for x in __import__("os").getenv(
-        "LALSTUDY_OPENAI_TEXT_MODELS",
-        "gpt-5.6-luna,gpt-5.6-terra",
-    ).split(",")
-    if x.strip()
-]
-
-OPENAI_FIGURE_MODELS = gemini_engine.OPENAI_FIGURE_MODELS
+StageCallError = engine.StageCallError
 
 
-# Re-export the exception so existing page-level error handling still works.
-StageCallError = gemini_engine.StageCallError
+def openai_sdk_available() -> bool:
+    return OpenAI is not None
 
 
-def provider_sdk_available(provider: str) -> bool:
-    provider = (provider or "gemini").lower()
-    if provider == "openai":
-        return OpenAI is not None
-    return gemini_engine.sdk_available()
+def get_text_models() -> List[str]:
+    return list(engine.OPENAI_TEXT_MODELS)
 
 
-def get_text_models(provider: str) -> List[str]:
-    return OPENAI_TEXT_MODELS if provider == "openai" else gemini_engine.TEXT_MODELS
+def get_figure_models() -> List[str]:
+    return list(engine.OPENAI_FIGURE_MODELS)
 
 
-def get_figure_models(provider: str) -> List[str]:
-    return OPENAI_FIGURE_MODELS if provider == "openai" else gemini_engine.FIGURE_MODELS
-
-
-def _record_usage(provider: str, model: str, stage: str, usage) -> None:
-    """Best-effort Streamlit session usage tracking for the sidebar fallback."""
-    try:
-        import streamlit as st
-    except Exception:
-        return
-
-    if usage is None:
-        return
-
+def _record_usage(model: str, stage: str, usage) -> dict:
     def val(name: str) -> int:
+        if usage is None:
+            return 0
         if isinstance(usage, dict):
             return int(usage.get(name, 0) or 0)
         return int(getattr(usage, name, 0) or 0)
@@ -72,12 +44,20 @@ def _record_usage(provider: str, model: str, stage: str, usage) -> None:
     input_tokens = val("input_tokens")
     output_tokens = val("output_tokens")
     total_tokens = val("total_tokens") or input_tokens + output_tokens
-    day_key = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    usage_dict = {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+    }
 
     try:
+        import streamlit as st
+
+        day_key = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         root = st.session_state.get("lal_ai_usage_daily_v1", {}) or {}
         day = root.get(day_key, {}) or {}
-        bucket = day.get(provider, {}) or {}
+        bucket = day.get("openai", {}) or {}
         bucket["input_tokens"] = int(bucket.get("input_tokens", 0) or 0) + input_tokens
         bucket["output_tokens"] = int(bucket.get("output_tokens", 0) or 0) + output_tokens
         bucket["total_tokens"] = int(bucket.get("total_tokens", 0) or 0) + total_tokens
@@ -86,11 +66,13 @@ def _record_usage(provider: str, model: str, stage: str, usage) -> None:
         bucket["models"][model] = int(bucket["models"].get(model, 0) or 0) + 1
         bucket.setdefault("stages", {})
         bucket["stages"][stage] = int(bucket["stages"].get(stage, 0) or 0) + 1
-        day[provider] = bucket
+        day["openai"] = bucket
         root[day_key] = day
         st.session_state["lal_ai_usage_daily_v1"] = root
     except Exception:
         pass
+
+    return usage_dict
 
 
 def _is_transient(exc: Exception) -> bool:
@@ -114,7 +96,11 @@ def _is_transient(exc: Exception) -> bool:
 
 def _is_model_unavailable(exc: Exception) -> bool:
     text = str(exc).lower()
-    return "404" in text or "not_found" in text or ("model" in text and "not available" in text)
+    return (
+        "404" in text
+        or "not_found" in text
+        or ("model" in text and "not available" in text)
+    )
 
 
 def _openai_parse(
@@ -182,10 +168,15 @@ def _openai_parse(
                 parsed = getattr(response, "output_parsed", None)
                 if parsed is None:
                     raise RuntimeError(f"{model_name} returned no structured output.")
+
                 result = parsed if isinstance(parsed, schema) else schema.model_validate(parsed)
-                usage = getattr(response, "usage", None)
-                _record_usage("openai", model_name, stage, usage)
-                return result, model_name
+                usage_dict = _record_usage(
+                    model_name,
+                    stage,
+                    getattr(response, "usage", None),
+                )
+                return result, model_name, usage_dict
+
             except Exception as exc:
                 errors.append(f"OpenAI {model_name} attempt {attempt + 1}: {exc}")
                 if _is_model_unavailable(exc):
@@ -205,23 +196,15 @@ def _core_context(core_bundle: dict) -> str:
     return json.dumps(source, ensure_ascii=False, indent=2)[:30_000]
 
 
-def analyze_core(*, paper_text: str, api_key: str, depth: str, detected_methods: List[str], provider: str = "gemini"):
-    if provider != "openai":
-        return gemini_engine.analyze_core(
-            paper_text=paper_text,
-            api_key=api_key,
-            depth=depth,
-            detected_methods=detected_methods,
-        )
-
+def analyze_core(*, paper_text: str, api_key: str, depth: str, detected_methods: List[str]):
     prompt = f"""
 You are LALSTUDY's Stage 1 scientific-reading engine.
 
-{gemini_engine.LANGUAGE_RULE}
-{gemini_engine.GROUNDING_RULE}
+{engine.LANGUAGE_RULE}
+{engine.GROUNDING_RULE}
 
 Learner level:
-{gemini_engine.DEPTH_INSTRUCTIONS.get(depth, gemini_engine.DEPTH_INSTRUCTIONS["undergraduate"])}
+{engine.DEPTH_INSTRUCTIONS.get(depth, engine.DEPTH_INSTRUCTIONS["undergraduate"])}
 
 Possible methods detected by a separate rule-based system:
 {", ".join(detected_methods[:25]) if detected_methods else "none"}
@@ -241,34 +224,27 @@ Question → experiment/analysis → direct observation → inference → next q
 
 PAPER TEXT
 ==========
-{gemini_engine.compact_text(paper_text, 135_000)}
+{engine.compact_text(paper_text, 135_000)}
 """
-    return _openai_parse(
+    result, model, _usage = _openai_parse(
         api_key=api_key,
         stage="core",
         prompt=prompt,
-        schema=gemini_engine.BilingualCore,
-        model_pool=OPENAI_TEXT_MODELS,
+        schema=engine.BilingualCore,
+        model_pool=engine.OPENAI_TEXT_MODELS,
     )
+    return result, model
 
 
-def analyze_prerequisites(*, paper_text: str, core_bundle: dict, api_key: str, depth: str, provider: str = "gemini"):
-    if provider != "openai":
-        return gemini_engine.analyze_prerequisites(
-            paper_text=paper_text,
-            core_bundle=core_bundle,
-            api_key=api_key,
-            depth=depth,
-        )
-
+def analyze_prerequisites(*, paper_text: str, core_bundle: dict, api_key: str, depth: str):
     prompt = f"""
 You are LALSTUDY's prerequisite-learning module.
 
-{gemini_engine.LANGUAGE_RULE}
-{gemini_engine.GROUNDING_RULE}
+{engine.LANGUAGE_RULE}
+{engine.GROUNDING_RULE}
 
 Learner level:
-{gemini_engine.DEPTH_INSTRUCTIONS.get(depth, gemini_engine.DEPTH_INSTRUCTIONS["undergraduate"])}
+{engine.DEPTH_INSTRUCTIONS.get(depth, engine.DEPTH_INSTRUCTIONS["undergraduate"])}
 
 CORE ANALYSIS
 =============
@@ -277,43 +253,29 @@ CORE ANALYSIS
 TASK
 Identify approximately 6-12 prerequisite concepts that would most reduce the
 reader's difficulty understanding THIS paper.
-
-For each concept:
-- why it is needed for this paper,
-- a standalone scientific explanation,
-- how it appears in this paper,
-- what should be learned first.
-
-Do not create a generic glossary. Prefer concepts that are central to the paper's
-mechanism, model system, or analysis.
+For each concept explain why it is needed, the standalone science, how it appears
+in this paper, and what should be learned first.
 
 PAPER TEXT
 ==========
-{gemini_engine.compact_text(paper_text, 100_000)}
+{engine.compact_text(paper_text, 100_000)}
 """
-    return _openai_parse(
+    result, model, _usage = _openai_parse(
         api_key=api_key,
         stage="prerequisites",
         prompt=prompt,
-        schema=gemini_engine.BilingualPrerequisites,
-        model_pool=OPENAI_TEXT_MODELS,
+        schema=engine.BilingualPrerequisites,
+        model_pool=engine.OPENAI_TEXT_MODELS,
     )
+    return result, model
 
 
-def analyze_experiments(*, paper_text: str, core_bundle: dict, api_key: str, detected_methods: List[str], provider: str = "gemini"):
-    if provider != "openai":
-        return gemini_engine.analyze_experiments(
-            paper_text=paper_text,
-            core_bundle=core_bundle,
-            api_key=api_key,
-            detected_methods=detected_methods,
-        )
-
+def analyze_experiments(*, paper_text: str, core_bundle: dict, api_key: str, detected_methods: List[str]):
     prompt = f"""
 You are LALSTUDY's experimental-strategy module.
 
-{gemini_engine.LANGUAGE_RULE}
-{gemini_engine.GROUNDING_RULE}
+{engine.LANGUAGE_RULE}
+{engine.GROUNDING_RULE}
 
 CORE ANALYSIS
 =============
@@ -324,45 +286,33 @@ Ontology hints:
 
 TASK
 Select the paper's major experiments / analyses, not every procedural detail.
-For each, explain:
-- scientific question
-- sample/model
-- manipulated variable or comparison
-- readout
-- WHY this method answers the question
-- what the result supports
-- key limitation
-- evidence location
-
-Aim for roughly 5-12 high-value experiment cards.
-Use conventional English method names whenever possible.
+For each, explain the scientific question, sample/model, manipulation/comparison,
+readout, why the method answers the question, what the result supports, key
+limitation, and evidence location.
 
 PAPER TEXT
 ==========
-{gemini_engine.compact_text(paper_text, 125_000)}
+{engine.compact_text(paper_text, 125_000)}
 """
-    return _openai_parse(
+    result, model, _usage = _openai_parse(
         api_key=api_key,
         stage="experiments",
         prompt=prompt,
-        schema=gemini_engine.BilingualExperiments,
-        model_pool=OPENAI_TEXT_MODELS,
+        schema=engine.BilingualExperiments,
+        model_pool=engine.OPENAI_TEXT_MODELS,
     )
+    return result, model
 
 
-def analyze_figures(*, pdf_bytes: bytes, core_bundle: dict, api_key: str, provider: str = "gemini"):
-    if provider != "openai":
-        return gemini_engine.analyze_figures(
-            pdf_bytes=pdf_bytes,
-            core_bundle=core_bundle,
-            api_key=api_key,
-        )
+def analyze_figures(*, pdf_bytes: bytes, core_bundle: dict, api_key: str):
+    if len(pdf_bytes) > 50 * 1024 * 1024:
+        raise ValueError("Figure analysis currently supports PDFs up to 50 MB.")
 
     prompt = f"""
 You are LALSTUDY's Figure-reading module.
 
-{gemini_engine.LANGUAGE_RULE}
-{gemini_engine.GROUNDING_RULE}
+{engine.LANGUAGE_RULE}
+{engine.GROUNDING_RULE}
 
 CORE ANALYSIS
 =============
@@ -370,19 +320,19 @@ CORE ANALYSIS
 
 TASK
 Inspect the uploaded PDF and reconstruct the MAIN scientific Figures.
-Do not analyze supplementary Figures unless essential.
-For each Figure explain its role, main question, panel-level observation and
-interpretation where readable, methods, overall takeaway, what it supports,
-and what it does not establish. Do not invent unreadable labels or values.
+Do not analyze supplementary Figures unless essential. Explain each Figure's role,
+main question, panel-level WHAT/HOW/RESULT/INTERPRETATION where readable, methods,
+overall takeaway, what it supports, and what it does not establish.
 """
-    return _openai_parse(
+    result, model, _usage = _openai_parse(
         api_key=api_key,
         stage="figures",
         prompt=prompt,
-        schema=gemini_engine.BilingualFigures,
-        model_pool=OPENAI_FIGURE_MODELS,
+        schema=engine.BilingualFigures,
+        model_pool=engine.OPENAI_FIGURE_MODELS,
         pdf_bytes=pdf_bytes,
     )
+    return result, model
 
 
 def analyze_single_figure(
@@ -393,46 +343,71 @@ def analyze_single_figure(
     image_mime_type: str,
     core_bundle: dict,
     api_key: str,
-    provider: str = "openai",
 ):
-    """Analyze exactly one Figure with exactly the provider the user selected."""
-    if provider == "openai":
-        # Reuse the mature v0.3.3 per-Figure implementation, but pass no Gemini
-        # key so there is no silent cross-provider fallback.
-        result, model, _provider_label, usage = gemini_engine.analyze_single_figure(
-            figure_label=figure_label,
-            legend=legend,
-            image_bytes=image_bytes,
-            image_mime_type=image_mime_type,
-            core_bundle=core_bundle,
-            openai_api_key=api_key,
-            gemini_api_key="",
-        )
-        _record_usage("openai", model, f"single_figure:{figure_label}", usage)
-        return result, model, "OpenAI", usage
+    if not image_bytes:
+        raise ValueError("Figure image is empty.")
 
-    result, model, _provider_label, usage = gemini_engine.analyze_single_figure(
-        figure_label=figure_label,
-        legend=legend,
+    figure_label = (figure_label or "Figure").strip()
+    legend = (legend or "").strip()
+
+    prompt = f"""
+You are LALSTUDY's single-Figure scientific reading module.
+
+{engine.LANGUAGE_RULE}
+{engine.GROUNDING_RULE}
+
+CORE ANALYSIS
+=============
+{_core_context(core_bundle)}
+
+TARGET FIGURE
+=============
+Label: {figure_label}
+
+ORIGINAL FIGURE LEGEND
+======================
+{legend[:18_000] or "No legend was extracted."}
+
+TASK
+Analyze ONLY the single Figure image supplied with this request.
+The image and its original legend are the primary evidence.
+Use the Core Analysis only to understand where this Figure fits in the paper.
+
+Return one FigureAnalysis in Korean and one semantically equivalent English version.
+Explain:
+- role in the paper's story
+- main scientific question
+- panel-by-panel WHAT / HOW / RESULT / INTERPRETATION when labels are readable
+- methods used in each panel when supported by the image or legend
+- overall takeaway
+- what this Figure supports
+- what it does NOT establish
+
+Do not invent unreadable labels, values, statistics, or methods.
+If a panel is ambiguous, state the uncertainty instead of guessing.
+Preserve the target label as `{figure_label}`.
+"""
+
+    result, model, usage = _openai_parse(
+        api_key=api_key,
+        stage=f"single_figure:{figure_label}",
+        prompt=prompt,
+        schema=engine.BilingualSingleFigure,
+        model_pool=engine.OPENAI_FIGURE_MODELS,
         image_bytes=image_bytes,
         image_mime_type=image_mime_type,
-        core_bundle=core_bundle,
-        openai_api_key="",
-        gemini_api_key=api_key,
     )
-    return result, model, "Gemini", usage
+    return result, model, "OpenAI", usage
 
 
-def analyze_critical_learning(*, paper_text: str, core_bundle: dict, experiments_bundle: Optional[dict], api_key: str, depth: str, provider: str = "gemini"):
-    if provider != "openai":
-        return gemini_engine.analyze_critical_learning(
-            paper_text=paper_text,
-            core_bundle=core_bundle,
-            experiments_bundle=experiments_bundle,
-            api_key=api_key,
-            depth=depth,
-        )
-
+def analyze_critical_learning(
+    *,
+    paper_text: str,
+    core_bundle: dict,
+    experiments_bundle: Optional[dict],
+    api_key: str,
+    depth: str,
+):
     exp_context = json.dumps(
         (experiments_bundle.get("en", experiments_bundle) if experiments_bundle else {}),
         ensure_ascii=False,
@@ -442,11 +417,11 @@ def analyze_critical_learning(*, paper_text: str, core_bundle: dict, experiments
     prompt = f"""
 You are LALSTUDY's critical-reading and learning-planning module.
 
-{gemini_engine.LANGUAGE_RULE}
-{gemini_engine.GROUNDING_RULE}
+{engine.LANGUAGE_RULE}
+{engine.GROUNDING_RULE}
 
 Learner level:
-{gemini_engine.DEPTH_INSTRUCTIONS.get(depth, gemini_engine.DEPTH_INSTRUCTIONS["undergraduate"])}
+{engine.DEPTH_INSTRUCTIONS.get(depth, engine.DEPTH_INSTRUCTIONS["undergraduate"])}
 
 CORE ANALYSIS
 =============
@@ -466,28 +441,28 @@ Create a short ordered plan for what the reader should learn/review next.
 
 PAPER TEXT
 ==========
-{gemini_engine.compact_text(paper_text, 105_000)}
+{engine.compact_text(paper_text, 105_000)}
 """
-    return _openai_parse(
+    result, model, _usage = _openai_parse(
         api_key=api_key,
         stage="critical_learning",
         prompt=prompt,
-        schema=gemini_engine.BilingualCriticalLearning,
-        model_pool=OPENAI_TEXT_MODELS,
+        schema=engine.BilingualCriticalLearning,
+        model_pool=engine.OPENAI_TEXT_MODELS,
     )
+    return result, model
 
 
-def explain_concepts_batch(*, concepts: List[str], api_key: str, depth: str = "undergraduate", paper_context: str = "", provider: str = "gemini"):
-    if provider != "openai":
-        return gemini_engine.explain_concepts_batch(
-            concepts=concepts,
-            api_key=api_key,
-            depth=depth,
-            paper_context=paper_context,
-        )
-
+def explain_concepts_batch(
+    *,
+    concepts: List[str],
+    api_key: str,
+    depth: str = "undergraduate",
+    paper_context: str = "",
+):
     cleaned = []
     seen = set()
+
     for value in concepts:
         value = (value or "").strip()
         if not value:
@@ -511,9 +486,9 @@ Selected concepts/phrases:
 {json.dumps(cleaned, ensure_ascii=False)}
 
 Reader level:
-{gemini_engine.DEPTH_INSTRUCTIONS.get(depth, gemini_engine.DEPTH_INSTRUCTIONS["undergraduate"])}
+{engine.DEPTH_INSTRUCTIONS.get(depth, engine.DEPTH_INSTRUCTIONS["undergraduate"])}
 
-Paper context is only for disambiguation. Never archive paper-specific findings.
+Paper context is ONLY for disambiguation. Never archive paper-specific findings.
 PAPER CONTEXT
 =============
 {context or "none"}
@@ -523,10 +498,11 @@ canonical_name, true aliases, Korean/English definition, mechanism, why it
 matters, prerequisites, and difficulty. Korean should use English-first
 scientific terminology. The card must be reusable for a different paper/user.
 """
-    return _openai_parse(
+    result, model, _usage = _openai_parse(
         api_key=api_key,
         stage="knowledge_archive_fill",
         prompt=prompt,
-        schema=gemini_engine.ConceptBatchAnalysis,
-        model_pool=OPENAI_TEXT_MODELS,
+        schema=engine.ConceptBatchAnalysis,
+        model_pool=engine.OPENAI_TEXT_MODELS,
     )
+    return result, model

@@ -1,14 +1,14 @@
 import streamlit as st
 from i18n import language_selector, L
 from knowledge_widget import render_knowledge_archive_widget
-from ai_provider import render_ai_provider_panel
+from ai_provider import render_openai_usage_panel
 
-APP_VERSION = "v0.3.4.2-beta"
+APP_VERSION = "v0.4.0-beta"
 
 st.set_page_config(page_title="LALSTUDY", page_icon="🧬", layout="wide")
 lang = language_selector()
 
-render_ai_provider_panel(lang=lang)
+render_openai_usage_panel(lang=lang)
 
 render_knowledge_archive_widget(lang=lang)
 
@@ -22,7 +22,7 @@ if lang == "ko":
 LALSTUDY는 두 가지 학습 흐름을 연결합니다.
 
 #### 📄 Learn a Paper
-논문 PDF → **Question → Gap → Logic Map → Prerequisites → Experiments → Figures → Critical Reading → Learn Next**
+논문 PDF → **Core Analysis + Figures/legends → 필요할 때 Plus Analysis**
 
 #### 🔬 Explore Experiments
 실험기법 → **Method → Paper → Figure → Panel**
@@ -34,7 +34,7 @@ else:
 LALSTUDY connects two learning workflows.
 
 #### 📄 Learn a Paper
-Paper PDF → **core logic → why the study matters → prerequisites → experimental strategy → figures → what to learn next**
+Paper PDF → **Core Analysis + Figures/legends → optional Plus Analysis when needed**
 
 #### 🔬 Explore Experiments
 Experimental method → **Method → Paper → Figure → Panel**
@@ -88,7 +88,7 @@ Figure / Panel interpretation
 Additional learning""", language=None)
 
 st.info(L(lang,
-    "v0.1.1-beta는 한국어/영어 UI와 학습 설명을 지원합니다. 원 논문의 title/abstract/caption은 원문을 유지합니다.",
-    "v0.1.1-beta adds Korean/English UI and learning explanations while preserving original paper titles, abstracts, and captions."))
+    "v0.4.0-beta는 OpenAI-only AI 분석, Figure별 독립 분석, Knowledge Archive, 공식 OpenAI usage sync를 지원합니다.",
+    "v0.4.0-beta uses an OpenAI-only AI engine with per-Figure analysis, Knowledge Archive, and official OpenAI usage sync."))
 
 st.page_link("pages/5_About.py", label=L(lang,"About / 버전 기록","About / Version History"), icon="ℹ️")

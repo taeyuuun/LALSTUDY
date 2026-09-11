@@ -8,7 +8,7 @@ from PIL import Image, ImageOps
 import streamlit as st
 from i18n import language_selector, L
 from knowledge_widget import render_knowledge_archive_widget
-from ai_provider import render_ai_provider_panel
+from ai_provider import render_openai_usage_panel
 
 # ============================================================
 # FILES
@@ -617,7 +617,7 @@ def crop_panel(
 
 lang = language_selector()
 
-render_ai_provider_panel(lang=lang)
+render_openai_usage_panel(lang=lang)
 
 render_knowledge_archive_widget(lang=lang)
 

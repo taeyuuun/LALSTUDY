@@ -59,4 +59,4 @@ git tag -a v0.2.0-beta -m "LALSTUDY v0.2.0-beta"
 git push origin v0.2.0-beta
 ```
 
-For Streamlit Community Cloud, add `GEMINI_API_KEY` under the app's Secrets settings if you want the deployed demo to use a server-side key.
+For Streamlit Community Cloud, add `OPENAI_API_KEY` under the app's Secrets settings. Add `OPENAI_ADMIN_KEY` as well if you want official organization usage/cost sync.

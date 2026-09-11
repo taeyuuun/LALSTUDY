@@ -5,9 +5,8 @@ import streamlit as st
 
 from ai_router import explain_concepts_batch
 from ai_provider import (
-    get_provider_api_key,
-    provider_ready,
-    provider_label,
+    get_openai_api_key,
+    openai_ready,
 )
 from knowledge_archive import (
     KnowledgeArchive,
@@ -297,12 +296,10 @@ def render_knowledge_archive_widget(
 
     Users add EXACTLY one term/phrase at a time to a queue.
     Archive search is API-free.
-    Gemini is called only after an explicit MISS-generation click.
+    OpenAI is called only after an explicit MISS-generation click.
     """
 
-    from ai_provider import get_selected_provider
-    selected_provider = get_selected_provider()
-    provider_key = get_provider_api_key(selected_provider)
+    openai_api_key = get_openai_api_key()
 
     supabase_url, supabase_secret = (
         get_supabase_credentials(
@@ -714,8 +711,8 @@ def render_knowledge_archive_widget(
                         ),
                         use_container_width=True,
                         disabled=(
-                            not provider_key
-                            or not provider_ready(selected_provider)
+                            not openai_api_key
+                            or not openai_ready()
                         ),
                         key=(
                             "lal_archive_generate_queue_v2"
@@ -726,8 +723,8 @@ def render_knowledge_archive_widget(
                 st.caption(
                     _L(
                         lang,
-                        f"이 버튼을 눌렀을 때만 {provider_label(selected_provider, lang)} request 1회가 발생합니다.",
-                        f"{provider_label(selected_provider, lang)} is called once only when this button is clicked.",
+                        "이 버튼을 눌렀을 때만 OpenAI request 1회가 발생합니다.",
+                        "OpenAI is called once only when this button is clicked.",
                     )
                 )
 
@@ -746,13 +743,12 @@ def render_knowledge_archive_widget(
                                         misses
                                     ),
                                     api_key=(
-                                        provider_key
+                                        openai_api_key
                                     ),
                                     depth=depth,
                                     paper_context=(
                                         paper_context
                                     ),
-                                    provider=selected_provider,
                                 )
                             )
 

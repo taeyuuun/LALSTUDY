@@ -10,7 +10,7 @@ import re
 import html
 from i18n import language_selector, L
 from knowledge_widget import render_knowledge_archive_widget
-from ai_provider import render_ai_provider_panel
+from ai_provider import render_openai_usage_panel
 
 DATA_FILE = Path("method_profiles.json")
 IMAGE_INDEX_FILE = Path("figure_images.json")
@@ -591,7 +591,7 @@ def build_panel_card(panel_text, figure_level_method):
 
 lang = language_selector()
 
-render_ai_provider_panel(lang=lang)
+render_openai_usage_panel(lang=lang)
 
 render_knowledge_archive_widget(lang=lang)
 

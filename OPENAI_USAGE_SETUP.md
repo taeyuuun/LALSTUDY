@@ -16,4 +16,4 @@ The sidebar refreshes official OpenAI usage at most once per 60 seconds unless t
 
 If the Usage API exposes the `data sharing incentive` service tier, LALSTUDY labels the complimentary-token remaining value as exact. If that tier is not present in the API response, LALSTUDY shows an official eligible-model usage fallback and marks the remaining value as an estimate.
 
-Gemini still uses app-side usage tracking in this version.
+v0.4.0 uses OpenAI only; there is no Gemini runtime path.

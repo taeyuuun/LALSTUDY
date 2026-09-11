@@ -13,7 +13,7 @@ from pypdf import PdfReader
 
 from i18n import language_selector, L
 from knowledge_widget import render_knowledge_archive_widget
-from ai_provider import render_ai_provider_panel
+from ai_provider import render_openai_usage_panel
 from ai_router import (
     analyze_core,
     analyze_prerequisites,
@@ -26,10 +26,8 @@ from ai_router import (
     get_figure_models,
 )
 from ai_provider import (
-    get_selected_provider,
-    get_provider_api_key,
-    provider_ready,
-    provider_label,
+    get_openai_api_key,
+    openai_ready,
 )
 
 from figure_in_study import (
@@ -48,7 +46,7 @@ from source_pdf_figure_extractor import (
     available as source_pdf_extractor_available,
 )
 
-APP_VERSION = "v0.3.4.2-beta"
+APP_VERSION = "v0.4.0-beta"
 METHOD_PROFILE_FILE = Path("method_profiles.json")
 
 st.set_page_config(
@@ -241,47 +239,6 @@ def get_source_pdf_figures_v2(
         paper_hash=paper_hash,
         force=False,
     )
-
-
-def get_server_key():
-    try:
-        if "GEMINI_API_KEY" in st.secrets:
-            value = str(
-                st.secrets[
-                    "GEMINI_API_KEY"
-                ]
-            ).strip()
-
-            if value:
-                return value
-    except Exception:
-        pass
-
-    return os.getenv(
-        "GEMINI_API_KEY",
-        "",
-    ).strip()
-
-
-
-def get_openai_key():
-    try:
-        if "OPENAI_API_KEY" in st.secrets:
-            value = str(
-                st.secrets[
-                    "OPENAI_API_KEY"
-                ]
-            ).strip()
-
-            if value:
-                return value
-    except Exception:
-        pass
-
-    return os.getenv(
-        "OPENAI_API_KEY",
-        "",
-    ).strip()
 
 
 def get_mineru_token():
@@ -595,27 +552,22 @@ st.title(
     "📄 Learn a Paper"
 )
 
-render_ai_provider_panel(lang=lang)
+render_openai_usage_panel(lang=lang)
 
 render_knowledge_archive_widget(
     lang=lang,
     depth=depth,
 )
 
-# Provider choice is global and persists in Streamlit session state.
-# Read it AFTER the sidebar widget so this rerun uses the user's latest choice.
-selected_provider = get_selected_provider()
-provider_key = get_provider_api_key(selected_provider)
-provider_ok = provider_ready(selected_provider)
+openai_api_key = get_openai_api_key()
+openai_ok = openai_ready()
 
+st.sidebar.caption("Active AI: OpenAI")
 st.sidebar.caption(
-    f"Active AI: {provider_label(selected_provider, lang)}"
+    "Text: " + " → ".join(get_text_models())
 )
 st.sidebar.caption(
-    "Text: " + " → ".join(get_text_models(selected_provider))
-)
-st.sidebar.caption(
-    "Figure: " + " → ".join(get_figure_models(selected_provider))
+    "Figure: " + " → ".join(get_figure_models())
 )
 
 
@@ -873,7 +825,7 @@ def prepare_main_figures(
     force=False,
 ):
     """
-    Prepare Figure images + source legends with no Gemini call.
+    Prepare Figure images + source legends without an AI call.
     Source-PDF extraction is primary. MinerU is an automatic fallback only.
     """
     figures = []
@@ -1177,7 +1129,7 @@ if not main_ready:
         st.caption(
             L(
                 lang,
-                "기본 분석에서는 현재 선택한 AI provider가 Core에 사용됩니다. Figure crop/legend 추출은 PDF에서 직접 처리합니다.",
+                "기본 분석에서는 OpenAI가 Core에 사용됩니다. Figure crop/legend 추출은 PDF에서 직접 처리합니다.",
                 "The currently selected AI provider is used for Core. Figure crop/legend extraction is handled directly from the PDF.",
             )
         )
@@ -1192,7 +1144,7 @@ if not main_ready:
                 type="primary",
                 use_container_width=True,
                 disabled=(
-                    not provider_ok
+                    not openai_ok
                 ),
                 key=(
                     "lal_main_analyze_paper"
@@ -1255,9 +1207,8 @@ if not main_ready:
                     result, model = (
                         analyze_core(
                             paper_text=paper_text,
-                            api_key=provider_key,
-                            provider=selected_provider,
-                            depth=depth,
+                            api_key=openai_api_key,
+                                                        depth=depth,
                             detected_methods=[
                                 name
                                 for name, _
@@ -1694,7 +1645,7 @@ if core_record or extracted_study_figures:
             )
         )
 
-        figure_provider_ready = provider_ok
+        figure_openai_ready = openai_ok
 
         analyzed_count = sum(
             1
@@ -1708,10 +1659,7 @@ if core_record or extracted_study_figures:
         if extracted_study_figures:
             st.caption(
                 f"AI analyzed: {analyzed_count}/{len(extracted_study_figures)} · "
-                + provider_label(
-                    selected_provider,
-                    lang,
-                )
+                + "OpenAI"
             )
 
         for source_item in (
@@ -1790,7 +1738,7 @@ if core_record or extracted_study_figures:
                         else "secondary"
                     ),
                     disabled=(
-                        not figure_provider_ready
+                        not figure_openai_ready
                     ),
                 ):
                     with st.spinner(
@@ -1853,12 +1801,9 @@ if core_record or extracted_study_figures:
                                     else {}
                                 ),
                                 api_key=(
-                                    provider_key
+                                    openai_api_key
                                 ),
-                                provider=(
-                                    selected_provider
-                                ),
-                            )
+                                                            )
 
                             set_single_figure_stage(
                                 source_item,
@@ -2010,7 +1955,7 @@ if core_record:
                     "plus_generate_prerequisites"
                 ),
                 disabled=(
-                    not provider_ok
+                    not openai_ok
                 ),
             ):
                 with st.spinner(
@@ -2029,9 +1974,8 @@ if core_record:
                                         "data"
                                     ]
                                 ),
-                                api_key=provider_key,
-                                provider=selected_provider,
-                                depth=depth,
+                                api_key=openai_api_key,
+                                                                depth=depth,
                             )
                         )
 
@@ -2165,7 +2109,7 @@ if core_record:
                     "plus_generate_experiments"
                 ),
                 disabled=(
-                    not provider_ok
+                    not openai_ok
                 ),
             ):
                 with st.spinner(
@@ -2184,9 +2128,8 @@ if core_record:
                                         "data"
                                     ]
                                 ),
-                                api_key=provider_key,
-                                provider=selected_provider,
-                                detected_methods=[
+                                api_key=openai_api_key,
+                                                                detected_methods=[
                                     name
                                     for name, _
                                     in rule_methods.most_common(
@@ -2402,7 +2345,7 @@ if core_record:
                     "plus_generate_critical"
                 ),
                 disabled=(
-                    not provider_ok
+                    not openai_ok
                 ),
             ):
                 with st.spinner(
@@ -2428,9 +2371,8 @@ if core_record:
                                     if experiments_record
                                     else None
                                 ),
-                                api_key=provider_key,
-                                provider=selected_provider,
-                                depth=depth,
+                                api_key=openai_api_key,
+                                                                depth=depth,
                             )
                         )
 

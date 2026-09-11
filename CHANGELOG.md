@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.4.0-beta] - 2026-09-12
+
+### OpenAI-only architecture
+- Removed Gemini runtime support and provider selection
+- Removed `google-genai` dependency and `GEMINI_API_KEY` requirement
+- Routed Core, Plus analyses, per-Figure analysis, and Knowledge Archive MISS generation through OpenAI only
+- Kept independent per-Figure caching and native Figure + legend display
+- Kept official OpenAI Organization Usage / Costs sync
+- Sidebar now shows a single `OpenAI Usage` panel
+
 
 ## [0.3.4.2-beta] - 2026-09-12
 

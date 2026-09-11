@@ -1,13 +1,13 @@
 import streamlit as st
 from i18n import language_selector, L
 from knowledge_widget import render_knowledge_archive_widget
-from ai_provider import render_ai_provider_panel
+from ai_provider import render_openai_usage_panel
 
-APP_VERSION = "v0.3.4.2-beta"
+APP_VERSION = "v0.4.0-beta"
 st.set_page_config(page_title="LALSTUDY · About",page_icon="ℹ️",layout="wide")
 lang=language_selector()
 
-render_ai_provider_panel(lang=lang)
+render_openai_usage_panel(lang=lang)
 
 render_knowledge_archive_widget(lang=lang)
 
@@ -28,6 +28,21 @@ The current corpus-based features use approximately 1,000 **Nature Communication
     """)
 
 st.header(L(lang,"버전 기록","Version History"))
+with st.container(border=True):
+    st.subheader("v0.4.0-beta")
+    st.markdown(L(lang,"""
+- AI provider를 OpenAI 하나로 단일화
+- Core / Plus / Figure / Knowledge Archive AI 호출을 OpenAI로 통합
+- Figure별 독립 분석 및 cache 유지
+- OpenAI 공식 Usage / Costs sync 유지
+- Gemini runtime 및 provider 선택 UI 제거
+""","""
+- Unified all AI features under OpenAI only
+- Core / Plus / Figure / Knowledge Archive calls use the same OpenAI engine
+- Independent per-Figure analysis and caching retained
+- Official OpenAI Usage / Costs sync retained
+- Gemini runtime and provider-selection UI removed
+"""))
 with st.container(border=True):
     st.subheader("v0.1.1-beta")
     st.markdown(L(lang,"""
@@ -56,8 +71,8 @@ with st.container(border=True):
 
 st.header(L(lang,"로드맵","Roadmap"))
 st.markdown(L(lang,"""
-### v0.2 후보
-- 생성형 AI 설명 레이어
+### 현재 개발 방향
+- OpenAI 기반 AI 설명 레이어 고도화
 - Question → Gap → Hypothesis → Experiment → Result → Conclusion 구조화
 - Concept dependency graph
 - Learn a Paper ↔ Method/Figure Explorer 직접 연결
@@ -69,8 +84,8 @@ st.markdown(L(lang,"""
 - 사용자 correction / QA
 - 여러 논문 비교
 ""","""
-### v0.2 candidates
-- Generative-AI explanation layer
+### Current development direction
+- Improve the OpenAI-powered explanation layer
 - Question → Gap → Hypothesis → Experiment → Result → Conclusion reconstruction
 - Concept dependency graph
 - Direct Learn a Paper ↔ Method/Figure Explorer linking

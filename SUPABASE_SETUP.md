@@ -46,7 +46,7 @@ Open the deployed LALSTUDY app:
 Add:
 
 ```toml
-GEMINI_API_KEY = "..."
+OPENAI_API_KEY = "sk-..."
 MINERU_TOKEN = "..."
 
 SUPABASE_URL = "https://YOUR_PROJECT.supabase.co"
@@ -79,16 +79,16 @@ First run:
 
 - Archive HIT = 0
 - Archive MISS = 3
-- Gemini generated = 3
-- one Gemini batch request
+- OpenAI generated = 3
+- one OpenAI batch request
 - the three cards are inserted into Supabase
 
 Run the same concepts again (or open the app as another user):
 
 - Archive HIT = 3
 - Archive MISS = 0
-- Gemini generated = 0
-- zero Gemini API calls
+- OpenAI generated = 0
+- zero OpenAI API calls
 
 ## Security
 

@@ -2,7 +2,26 @@
 
 > Learn a paper, understand the experiment, and keep learning without losing context.
 
-**Current version: `v0.3.4.1-beta`**
+**Current version: `v0.4.0-beta`**
+
+## v0.4.0 — OpenAI-only architecture
+
+LALSTUDY now uses one AI provider only: **OpenAI**. Gemini runtime support, provider switching, and `google-genai` were removed.
+
+- Core / Plus analyses: OpenAI
+- Per-Figure analysis: OpenAI
+- Knowledge Archive MISS generation: OpenAI
+- Official organization usage/cost sync: OpenAI Admin API
+- Default model chain: `gpt-5.6-luna → gpt-5.6-terra`
+
+Required server secrets:
+
+```toml
+OPENAI_API_KEY = "sk-..."
+OPENAI_ADMIN_KEY = "sk-admin-..."  # optional, needed for official usage sync
+OPENAI_COMPLIMENTARY_DAILY_TOKENS = "2500000"
+```
+
 
 LALSTUDY is an experimental scientific-paper learning platform that connects two workflows:
 
@@ -204,13 +223,13 @@ Korean explanatory grammar is mixed with conventional English terms such as
 
 ## v0.2.2 server-side AI
 
-All visitors use the deployment owner's server-side `GEMINI_API_KEY`.
+All visitors use the deployment owner's server-side `OPENAI_API_KEY`.
 
 The key is stored in Streamlit Cloud Secrets and is never shown in the UI.
 
 Automatic model order:
 
-`gemini-3.8-flash → gemini-3.7-flash → gemini-3.6-flash`
+`gpt-5.6-luna → gpt-5.6-terra`
 
 Transient 429/5xx errors are retried before fallback.
 
@@ -250,10 +269,10 @@ Default fallback pools:
 
 ```text
 Text stages:
-gemini-3.8-flash → gemini-3.5-flash → gemini-3.5-flash-lite
+gpt-5.6-luna → gpt-5.6-terra
 
 Figure stage:
-gemini-3.8-flash → gemini-3.5-flash
+gpt-5.6-luna → gpt-5.6-terra
 ```
 
 
@@ -309,7 +328,7 @@ structured image/chart block
 ↓
 canonical Fig. N matching
 ↓
-Figure image + source caption + Gemini interpretation
+Figure image + source caption + OpenAI interpretation
 ```
 
 Server configuration:
@@ -509,7 +528,7 @@ Supabase batch lookup
  ┌─────┴─────┐
  HIT        MISS
  ↓            ↓
-instant     batch Gemini request
+instant     batch OpenAI request
               ↓
        reusable explanation
               ↓
@@ -517,7 +536,7 @@ instant     batch Gemini request
 ```
 
 A later user requesting the same canonical concept or an archived alias receives
-an Archive HIT without a Gemini request.
+an Archive HIT without an OpenAI request.
 
 The archive stores reusable general scientific knowledge only. Paper-specific
 findings remain outside the shared concept record.
@@ -563,12 +582,12 @@ It is now available from every LALSTUDY page as a compact top-right popover:
                                       ↓
                               Archive-only search
                                       ↓
-                         HIT → immediate, zero Gemini
+                         HIT → immediate, zero OpenAI
                          MISS → explicit AI generation
 ```
 
-Archive search never triggers Gemini automatically. Missing concepts are sent
-to Gemini only when the user explicitly clicks `Generate MISSes + archive`,
+Archive search never triggers OpenAI automatically. Missing concepts are sent
+to OpenAI only when the user explicitly clicks `Generate MISSes + archive`,
 and all current MISSes are batched into one request.
 
 The query and search state live in global Streamlit session state, so they
@@ -598,9 +617,9 @@ PLUS
 - Critical Reading
 ```
 
-The initial `Analyze paper` action uses Gemini only for Core Analysis.
+The initial `Analyze paper` action uses OpenAI for Core Analysis.
 Figure images and source legends are extracted from the source PDF without
-Gemini whenever possible.
+an AI call whenever possible.
 
 Figure images are no longer stretched to the full Streamlit container width.
 The original source legend is shown immediately below each Figure.
@@ -633,7 +652,7 @@ Multi-word concepts are never split automatically. `apoptotic stress` remains
 one query unless the user explicitly adds `apoptotic` and `stress` separately.
 
 Search remains API-free. Archive MISSes can still be generated together in one
-explicit Gemini batch request.
+explicit OpenAI batch request.
 
 
 ## v0.3.3 — Independent Figure AI + OpenAI primary
@@ -650,10 +669,7 @@ single Figure crop
 + compact Core context
 ```
 
-The primary provider is OpenAI (`gpt-5.6-luna`, then `gpt-5.6-terra`).
-If OpenAI is unavailable and `GEMINI_API_KEY` exists, LALSTUDY falls back to
-Gemini for that Figure only. Every Figure is cached independently, so one
-failure does not erase any successful Figure analyses.
+The only AI provider is OpenAI (`gpt-5.6-luna`, then `gpt-5.6-terra`). There is no cross-provider fallback. Every Figure is cached independently, so one failure does not erase any successful Figure analyses.
 
 Required server secret for OpenAI Figure analysis:
 
@@ -664,13 +680,12 @@ OPENAI_API_KEY = "sk-..."
 Never commit the real key. `.streamlit/secrets.toml` remains gitignored.
 
 
-## v0.3.4.1 — Official OpenAI usage sync
+## v0.3.4.1 — Official OpenAI usage sync (historical)
 
-- Global Gemini / OpenAI provider selector
-- Provider choice persists until changed
+- Historical dual-provider selector before v0.4.0
 - Per-Figure analysis remains independent per Figure
 - OpenAI Organization Usage + Costs official sync with `OPENAI_ADMIN_KEY`
 - Complimentary token remaining display when the data-sharing incentive tier is visible
-- Automatic fallback to clearly labelled estimate if the incentive tier is not exposed
+- Clearly labelled estimate if the incentive tier is not exposed
 
 See `OPENAI_USAGE_SETUP.md`.
