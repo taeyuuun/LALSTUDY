@@ -162,6 +162,36 @@ class BilingualCriticalLearning(BaseModel):
     en: CriticalLearningAnalysis
 
 
+
+class ConceptExplanation(BaseModel):
+    requested_term: str
+    canonical_name: str
+    aliases: List[str] = Field(default_factory=list)
+
+    definition_ko: str
+    definition_en: str
+
+    mechanism_ko: str
+    mechanism_en: str
+
+    why_it_matters_ko: str
+    why_it_matters_en: str
+
+    prerequisites: List[str] = Field(default_factory=list)
+
+    difficulty: Literal[
+        "basic",
+        "intermediate",
+        "advanced",
+    ] = "intermediate"
+
+
+class ConceptBatchAnalysis(BaseModel):
+    concepts: List[
+        ConceptExplanation
+    ] = Field(default_factory=list)
+
+
 # ============================================================
 # PROMPT HELPERS
 # ============================================================
@@ -718,3 +748,111 @@ PAPER TEXT
         model_pool=TEXT_MODELS,
         thinking_level="low",
     )
+
+# ============================================================
+# KNOWLEDGE ARCHIVE MISS FILLER
+# ============================================================
+
+def explain_concepts_batch(
+    *,
+    concepts: List[str],
+    api_key: str,
+    depth: str = "undergraduate",
+    paper_context: str = "",
+):
+    cleaned = []
+
+    seen = set()
+
+    for value in concepts:
+        value = (
+            value
+            or ""
+        ).strip()
+
+        if not value:
+            continue
+
+        key = value.casefold()
+
+        if key in seen:
+            continue
+
+        seen.add(
+            key
+        )
+
+        cleaned.append(
+            value[:160]
+        )
+
+    if not cleaned:
+        raise ValueError(
+            "No concepts were supplied."
+        )
+
+    if len(cleaned) > 8:
+        raise ValueError(
+            "A maximum of 8 concepts can be explained in one batch."
+        )
+
+    context = (
+        paper_context
+        or ""
+    ).strip()[:8000]
+
+    prompt = f"""
+You are building LALSTUDY's reusable scientific Knowledge Archive.
+
+The user selected these concepts/phrases while reading a life-science paper:
+
+{json.dumps(cleaned, ensure_ascii=False)}
+
+Reader level:
+{DEPTH_INSTRUCTIONS.get(depth, DEPTH_INSTRUCTIONS["undergraduate"])}
+
+Optional paper context is provided ONLY to disambiguate what a selected phrase
+means. DO NOT archive paper-specific results, sample sizes, Figure findings,
+author claims, or conclusions as general knowledge.
+
+PAPER CONTEXT FOR DISAMBIGUATION
+================================
+{context or "none"}
+
+TASK
+For every requested term, create a compact, reusable prerequisite-knowledge card.
+
+Rules:
+1. `requested_term` must preserve the user's input.
+2. `canonical_name` should be the conventional English scientific concept name.
+3. `aliases` should contain only true synonyms / common alternate names.
+4. `definition_*` answers "what is this?"
+5. `mechanism_*` explains how it works or the causal/structural logic when relevant.
+6. `why_it_matters_*` explains why a life-science reader commonly needs this concept.
+7. `prerequisites` lists 0-5 simpler concepts that help understand it.
+8. Do not pretend a relation is universally true if it is context dependent.
+9. Do not cite or summarize this particular paper.
+10. The output must be suitable for reuse for a DIFFERENT USER reading a DIFFERENT paper.
+
+KOREAN STYLE
+============
+Korean prose must use conventional English-first scientific terminology.
+Prefer expressions such as:
+- lysosome의 acidification
+- p53 conformational change
+- zinc homeostasis
+- Flow cytometry
+Do not unnecessarily transliterate technical English terms into Hangul.
+
+Generate BOTH Korean and English fields in the same object.
+"""
+
+    return _call_structured(
+        api_key=api_key,
+        stage="knowledge_archive_fill",
+        prompt=prompt,
+        schema=ConceptBatchAnalysis,
+        model_pool=TEXT_MODELS,
+        thinking_level="low",
+    )
+

@@ -2,6 +2,27 @@
 
 All notable LALSTUDY updates will be recorded here.
 
+## [0.3.0-beta] - 2026-09-11
+
+### Knowledge Archive
+- Added Supabase-backed persistent cross-user Knowledge Archive
+- Added canonical concept normalization and alias table
+- Added Archive HIT / MISS batch lookup
+- Missing concepts are generated together in one Gemini request
+- New reusable AI-generated knowledge is persisted automatically
+- Added hit counts and quality states: AI_GENERATED / REVIEWED / CURATED
+- Added `supabase_schema.sql` and `SUPABASE_SETUP.md`
+
+### Security
+- Uses backend-only `SUPABASE_SECRET_KEY`
+- Archive tables use RLS with no public anon/authenticated policies
+
+### UX
+- Added Knowledge Archive concept input and HIT/MISS diagnostics
+- Current text-input UI is the backend-validation step before Core drag-selection
+
+All notable LALSTUDY updates will be recorded here.
+
 ## [0.2.6-beta] - 2026-09-11
 
 ### UX

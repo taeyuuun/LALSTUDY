@@ -2,7 +2,7 @@
 
 > Learn a paper, understand the experiment, and keep learning without losing context.
 
-**Current version: `v0.2.6-beta`**
+**Current version: `v0.3.0-beta`**
 
 LALSTUDY is an experimental scientific-paper learning platform that connects two workflows:
 
@@ -495,3 +495,40 @@ blocks inside scientific Figures no longer push the crop boundary downward.
 
 This fixes the uploaded PNAS test case where Fig. 6 panels A/B were previously
 cut off while C-F remained visible.
+
+
+## v0.3.0 — Shared Knowledge Archive
+
+LALSTUDY now has a persistent shared scientific knowledge layer backed by
+Supabase Postgres.
+
+```text
+selected concepts
+       ↓
+Supabase batch lookup
+ ┌─────┴─────┐
+ HIT        MISS
+ ↓            ↓
+instant     batch Gemini request
+              ↓
+       reusable explanation
+              ↓
+           archive
+```
+
+A later user requesting the same canonical concept or an archived alias receives
+an Archive HIT without a Gemini request.
+
+The archive stores reusable general scientific knowledge only. Paper-specific
+findings remain outside the shared concept record.
+
+See `SUPABASE_SETUP.md` and `supabase_schema.sql`.
+
+### Server secrets
+
+```toml
+SUPABASE_URL = "https://..."
+SUPABASE_SECRET_KEY = "sb_secret_..."
+```
+
+The secret key must remain server-side.

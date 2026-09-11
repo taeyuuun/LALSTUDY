@@ -22,6 +22,7 @@ from ai_engine import (
     sdk_available,
     TEXT_MODELS,
     FIGURE_MODELS,
+    explain_concepts_batch,
 )
 
 from figure_in_study import (
@@ -40,7 +41,14 @@ from source_pdf_figure_extractor import (
     available as source_pdf_extractor_available,
 )
 
-APP_VERSION = "v0.2.6-beta"
+from knowledge_archive import (
+    KnowledgeArchive,
+    get_supabase_credentials,
+    normalize_concept,
+    parse_concept_input,
+)
+
+APP_VERSION = "v0.3.0-beta"
 METHOD_PROFILE_FILE = Path("method_profiles.json")
 
 st.set_page_config(
@@ -273,6 +281,58 @@ def get_mineru_token():
         "MINERU_TOKEN",
         "",
     ).strip()
+
+
+
+# ============================================================
+# KNOWLEDGE ARCHIVE
+# ============================================================
+
+@st.cache_resource(show_spinner=False)
+def build_archive_client(
+    supabase_url,
+    supabase_secret_key,
+):
+    if (
+        not supabase_url
+        or not supabase_secret_key
+    ):
+        return None
+
+    try:
+        return KnowledgeArchive(
+            supabase_url,
+            supabase_secret_key,
+        )
+    except Exception:
+        return None
+
+
+def concept_context_from_core(
+    core_record,
+):
+    if not core_record:
+        return ""
+
+    data = core_record.get(
+        "data",
+        {},
+    )
+
+    source = data.get(
+        "en",
+        data,
+    )
+
+    try:
+        return json.dumps(
+            source,
+            ensure_ascii=False,
+        )[:8000]
+    except Exception:
+        return str(
+            source
+        )[:8000]
 
 
 # ============================================================
@@ -522,6 +582,48 @@ else:
             lang,
             "관리자 API key 미설정",
             "Server API key missing",
+        )
+    )
+
+supabase_url, supabase_secret_key = (
+    get_supabase_credentials(
+        st.secrets
+    )
+)
+
+archive_client = (
+    build_archive_client(
+        supabase_url,
+        supabase_secret_key,
+    )
+)
+
+archive_connected = False
+archive_count = None
+
+if archive_client:
+    try:
+        archive_connected = (
+            archive_client.ping()
+        )
+
+        if archive_connected:
+            archive_count = (
+                archive_client.count()
+            )
+    except Exception:
+        archive_connected = False
+
+if archive_connected:
+    st.sidebar.success(
+        f"🧠 Knowledge Archive · {archive_count or 0} concepts"
+    )
+else:
+    st.sidebar.warning(
+        L(
+            lang,
+            "🧠 Knowledge Archive 미연결",
+            "🧠 Knowledge Archive not connected",
         )
     )
 
@@ -2579,6 +2681,523 @@ with tabs[5]:
                     )
                 )
 
+
+# ============================================================
+# KNOWLEDGE ARCHIVE V1
+# ============================================================
+
+st.divider()
+
+st.header(
+    L(
+        lang,
+        "🧠 Knowledge Archive",
+        "🧠 Knowledge Archive",
+    )
+)
+
+st.caption(
+    L(
+        lang,
+        "v0.3.0에서는 drag-selection backend를 먼저 검증합니다. 현재는 Core에서 모르는 용어/구절을 복사해 여러 개 입력하면, Archive HIT은 즉시 가져오고 MISS만 한 번의 Gemini batch request로 생성합니다.",
+        "v0.3.0 validates the archive backend first. Paste one or more unfamiliar terms/phrases from Core; archive HITs return immediately and only MISSes are sent in one Gemini batch request.",
+    )
+)
+
+if archive_connected:
+    st.success(
+        L(
+            lang,
+            f"공용 Archive 연결됨 · 현재 {archive_count or 0}개 concept",
+            f"Shared Archive connected · {archive_count or 0} concepts",
+        )
+    )
+else:
+    st.warning(
+        L(
+            lang,
+            "Supabase가 아직 연결되지 않았습니다. 설명 생성은 가능하지만 다른 사용자와 영구적으로 공유되지 않습니다. `supabase_schema.sql` 실행 후 Streamlit Secrets에 SUPABASE_URL / SUPABASE_SECRET_KEY를 넣으세요.",
+            "Supabase is not connected yet. AI explanations can still be generated, but they will not be persistently shared across users. Run `supabase_schema.sql` and configure SUPABASE_URL / SUPABASE_SECRET_KEY.",
+        )
+    )
+
+concept_raw = st.text_area(
+    L(
+        lang,
+        "설명할 concept / phrase",
+        "Concepts / phrases to explain",
+    ),
+    placeholder=L(
+        lang,
+        "예: zinc homeostasis\np53 conformational change\nlysosomal degradation",
+        "e.g. zinc homeostasis\np53 conformational change\nlysosomal degradation",
+    ),
+    height=110,
+    key="lal_knowledge_concept_input",
+    help=L(
+        lang,
+        "줄바꿈, 쉼표 또는 세미콜론으로 여러 개 입력할 수 있습니다. 한 번에 최대 8개.",
+        "Separate multiple concepts with newlines, commas, or semicolons. Maximum 8 per batch.",
+    ),
+)
+
+requested_concepts = (
+    parse_concept_input(
+        concept_raw
+    )
+)
+
+if len(
+    requested_concepts
+) > 8:
+    st.warning(
+        L(
+            lang,
+            "한 번에 최대 8개만 처리합니다. 앞의 8개만 사용됩니다.",
+            "A maximum of 8 concepts are processed per batch. Only the first 8 will be used.",
+        )
+    )
+
+requested_concepts = (
+    requested_concepts[:8]
+)
+
+if requested_concepts:
+    st.caption(
+        L(
+            lang,
+            f"선택됨: {len(requested_concepts)}개 · Gemini는 Archive MISS만 batch 처리",
+            f"Selected: {len(requested_concepts)} · Gemini batches only Archive MISSes",
+        )
+    )
+
+explain_concepts_clicked = st.button(
+    L(
+        lang,
+        "🔎 Archive 검색 + 필요한 것만 설명",
+        "🔎 Search Archive + explain only missing concepts",
+    ),
+    type="primary",
+    use_container_width=True,
+    disabled=(
+        not requested_concepts
+        or not server_key
+    ),
+    key="lal_archive_lookup_generate",
+)
+
+knowledge_result_key = (
+    "lal_knowledge_result:"
+    + active_hash()
+    + ":"
+    + depth
+)
+
+if explain_concepts_clicked:
+    hits = {}
+    misses = list(
+        requested_concepts
+    )
+
+    archive_error = None
+
+    if archive_connected:
+        try:
+            lookup = (
+                archive_client.lookup_many(
+                    requested_concepts
+                )
+            )
+
+            hits = lookup.get(
+                "hits",
+                {},
+            )
+
+            misses = lookup.get(
+                "misses",
+                [],
+            )
+
+        except Exception as exc:
+            archive_error = str(
+                exc
+            )
+
+            hits = {}
+            misses = list(
+                requested_concepts
+            )
+
+    generated = []
+    generated_model = None
+    generation_error = None
+
+    if misses:
+        with st.spinner(
+            L(
+                lang,
+                f"Archive MISS {len(misses)}개를 Gemini 한 번의 batch request로 생성 중...",
+                f"Generating {len(misses)} Archive MISSes in one Gemini batch request...",
+            )
+        ):
+            try:
+                batch, generated_model = (
+                    explain_concepts_batch(
+                        concepts=misses,
+                        api_key=server_key,
+                        depth=depth,
+                        paper_context=(
+                            concept_context_from_core(
+                                core_record
+                            )
+                        ),
+                    )
+                )
+
+                generated = [
+                    item.model_dump()
+                    for item in batch.concepts
+                ]
+
+                if archive_connected:
+                    for item in generated:
+                        try:
+                            archive_client.save_explanation(
+                                item,
+                                source_model=generated_model,
+                            )
+                        except Exception:
+                            # The explanation should still be shown even if
+                            # persistence fails for one item.
+                            pass
+
+            except Exception as exc:
+                generation_error = (
+                    str(exc)
+                )
+
+    # Reassemble in the user's original order.
+    assembled = []
+
+    generated_by_requested = {
+        normalize_concept(
+            item.get(
+                "requested_term",
+                "",
+            )
+        ): item
+        for item in generated
+    }
+
+    for requested in requested_concepts:
+        normalized = normalize_concept(
+            requested
+        )
+
+        archived = hits.get(
+            normalized
+        )
+
+        if archived:
+            assembled.append(
+                {
+                    "requested_term": (
+                        requested
+                    ),
+                    "source": "ARCHIVE_HIT",
+                    "data": archived,
+                }
+            )
+
+            continue
+
+        generated_item = (
+            generated_by_requested.get(
+                normalized
+            )
+        )
+
+        if generated_item:
+            assembled.append(
+                {
+                    "requested_term": (
+                        requested
+                    ),
+                    "source": (
+                        "GEMINI_MISS_FILL"
+                    ),
+                    "data": (
+                        generated_item
+                    ),
+                }
+            )
+
+        else:
+            assembled.append(
+                {
+                    "requested_term": (
+                        requested
+                    ),
+                    "source": "UNRESOLVED",
+                    "data": {},
+                }
+            )
+
+    st.session_state[
+        knowledge_result_key
+    ] = {
+        "items": assembled,
+        "hit_count": len(
+            hits
+        ),
+        "miss_count": len(
+            misses
+        ),
+        "generated_count": len(
+            generated
+        ),
+        "model": generated_model,
+        "archive_error": archive_error,
+        "generation_error": (
+            generation_error
+        ),
+    }
+
+
+knowledge_result = (
+    st.session_state.get(
+        knowledge_result_key
+    )
+)
+
+if knowledge_result:
+    hit_count = knowledge_result.get(
+        "hit_count",
+        0,
+    )
+
+    miss_count = knowledge_result.get(
+        "miss_count",
+        0,
+    )
+
+    generated_count = (
+        knowledge_result.get(
+            "generated_count",
+            0,
+        )
+    )
+
+    c1, c2, c3 = st.columns(
+        3
+    )
+
+    c1.metric(
+        "Archive HIT",
+        hit_count,
+    )
+
+    c2.metric(
+        "Archive MISS",
+        miss_count,
+    )
+
+    c3.metric(
+        "Gemini generated",
+        generated_count,
+    )
+
+    if (
+        miss_count == 0
+        and hit_count > 0
+    ):
+        st.success(
+            L(
+                lang,
+                "이번 설명은 Gemini API를 전혀 사용하지 않았습니다.",
+                "This explanation used zero Gemini API calls.",
+            )
+        )
+
+    elif generated_count > 0:
+        st.info(
+            L(
+                lang,
+                f"MISS {generated_count}개를 Gemini request 1회로 처리했습니다.",
+                f"{generated_count} MISSes were handled in one Gemini request.",
+            )
+        )
+
+    if knowledge_result.get(
+        "archive_error"
+    ):
+        st.warning(
+            "Archive lookup warning: "
+            + knowledge_result[
+                "archive_error"
+            ]
+        )
+
+    if knowledge_result.get(
+        "generation_error"
+    ):
+        st.error(
+            "Concept generation failed: "
+            + knowledge_result[
+                "generation_error"
+            ]
+        )
+
+    for index, item in enumerate(
+        knowledge_result.get(
+            "items",
+            []
+        )
+    ):
+        data = item.get(
+            "data",
+            {},
+        )
+
+        canonical = (
+            data.get(
+                "canonical_name"
+            )
+            or item.get(
+                "requested_term",
+                "Concept",
+            )
+        )
+
+        source = item.get(
+            "source",
+            "",
+        )
+
+        source_badge = {
+            "ARCHIVE_HIT": (
+                "⚡ Archive HIT"
+            ),
+            "GEMINI_MISS_FILL": (
+                "✨ Gemini → archived"
+                if archive_connected
+                else "✨ Gemini"
+            ),
+            "UNRESOLVED": (
+                "⚠ Unresolved"
+            ),
+        }.get(
+            source,
+            source,
+        )
+
+        with st.expander(
+            f"{canonical} · {source_badge}",
+            expanded=True,
+        ):
+            if not data:
+                st.write(
+                    L(
+                        lang,
+                        "설명을 생성하지 못했습니다.",
+                        "No explanation was generated.",
+                    )
+                )
+                continue
+
+            if lang == "ko":
+                definition = data.get(
+                    "definition_ko",
+                    "",
+                )
+                mechanism = data.get(
+                    "mechanism_ko",
+                    "",
+                )
+                why = data.get(
+                    "why_it_matters_ko",
+                    "",
+                )
+            else:
+                definition = data.get(
+                    "definition_en",
+                    "",
+                )
+                mechanism = data.get(
+                    "mechanism_en",
+                    "",
+                )
+                why = data.get(
+                    "why_it_matters_en",
+                    "",
+                )
+
+            st.markdown(
+                f"**{L(lang,'무엇인가','What is it')}**"
+            )
+            st.write(
+                definition
+            )
+
+            if mechanism:
+                st.markdown(
+                    f"**{L(lang,'어떻게 작동하나','How it works')}**"
+                )
+                st.write(
+                    mechanism
+                )
+
+            if why:
+                st.markdown(
+                    f"**{L(lang,'왜 알아야 하나','Why it matters')}**"
+                )
+                st.write(
+                    why
+                )
+
+            prerequisites = (
+                data.get(
+                    "prerequisites",
+                    []
+                )
+                or []
+            )
+
+            if prerequisites:
+                st.markdown(
+                    f"**{L(lang,'먼저 알면 좋은 개념','Useful prerequisites')}**"
+                )
+                st.write(
+                    " → ".join(
+                        prerequisites
+                    )
+                )
+
+            aliases = (
+                data.get(
+                    "aliases",
+                    []
+                )
+                or []
+            )
+
+            if aliases:
+                st.caption(
+                    "Aliases: "
+                    + ", ".join(
+                        aliases
+                    )
+                )
+
+            quality = data.get(
+                "quality_status"
+            )
+
+            if quality:
+                st.caption(
+                    f"Archive quality: {quality}"
+                )
 
 # ============================================================
 # EXPORT
