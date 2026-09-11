@@ -2,6 +2,25 @@
 
 All notable LALSTUDY updates will be recorded here.
 
+## [0.2.5.6-beta] - 2026-09-11
+
+### Architecture
+- Original PDF caption-anchor extraction is now the primary Figure engine
+- MinerU moved to fallback-only status
+- Figure image extraction no longer requires an external API on normal text-layer PDFs
+
+### Fixed
+- Prevents persistent Fig. 6 / Fig. 7 misassociation by eliminating MinerU geometry from the primary path
+- Anchored caption matching ignores in-text Figure references
+- Direct extractor deduplicates one crop per main Figure number
+- Source Figure cache versioned independently
+
+### Validation
+- Directly validated on the uploaded XAF1–MT2A PNAS paper
+- Fig. 1 through Fig. 8 were recovered as distinct whole Figures
+
+All notable LALSTUDY updates will be recorded here.
+
 ## [0.2.5.5-beta] - 2026-09-11
 
 ### Fixed

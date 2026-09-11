@@ -2,7 +2,7 @@
 
 > Learn a paper, understand the experiment, and keep learning without losing context.
 
-**Current version: `v0.2.5.5-beta`**
+**Current version: `v0.2.5.6-beta`**
 
 LALSTUDY is an experimental scientific-paper learning platform that connects two workflows:
 
@@ -439,3 +439,30 @@ whole Figure crop
 
 This removes MinerU page-index / coordinate ambiguity and fixes neighbor-Figure
 misassociation such as a Fig. 7 card showing a Fig. 6 panel.
+
+
+## v0.2.5.6 — Source PDF becomes the Figure authority
+
+After repeated MinerU multi-panel edge cases, LALSTUDY now uses the original
+uploaded PDF as the primary Figure extraction authority.
+
+```text
+Original PDF
+↓
+text block STARTING with "Fig. N." / "Figure N"
+↓
+true source page + source caption bbox
+↓
+same-column region immediately above caption
+↓
+whole Figure crop
+```
+
+This path:
+- uses no AI/API calls
+- ignores body references such as `(Fig. 7A)`
+- deduplicates by Figure number
+- preserves the uploaded PDF's actual page geometry
+
+MinerU remains available only as a fallback for PDFs with poor/no usable text
+layers or nonstandard caption structures.

@@ -35,7 +35,12 @@ from mineru_figure_extractor import (
     mineru_available,
 )
 
-APP_VERSION = "v0.2.5.5-beta"
+from source_pdf_figure_extractor import (
+    extract_figures_from_source_pdf,
+    available as source_pdf_extractor_available,
+)
+
+APP_VERSION = "v0.2.5.6-beta"
 METHOD_PROFILE_FILE = Path("method_profiles.json")
 
 st.set_page_config(
@@ -215,6 +220,18 @@ def get_study_figures(file_bytes, paper_hash):
     return extract_study_figures(
         pdf_bytes=file_bytes,
         paper_hash=paper_hash,
+    )
+
+
+@st.cache_data(show_spinner=False)
+def get_source_pdf_figures(
+    file_bytes,
+    paper_hash,
+):
+    return extract_figures_from_source_pdf(
+        pdf_bytes=file_bytes,
+        paper_hash=paper_hash,
+        force=False,
     )
 
 
@@ -675,34 +692,90 @@ m3.metric(
 
 mineru_token = get_mineru_token()
 
-mineru_state_key = (
-    "lal_mineru_figures:v6:"
+# ------------------------------------------------------------
+# FIGURE EXTRACTION STATE
+# ------------------------------------------------------------
+# Primary path is now fully deterministic and local:
+# original PDF -> real Fig.N caption -> same-column crop.
+#
+# MinerU is retained only as fallback for PDFs whose text/layout layer does
+# not expose reliable Figure captions.
+
+source_figure_state_key = (
+    "lal_source_pdf_figures:v1:"
     + active_hash()
 )
+
+mineru_state_key = (
+    "lal_mineru_figures:fallback_v1:"
+    + active_hash()
+)
+
+source_record = st.session_state.get(
+    source_figure_state_key
+)
+
+if source_record is None:
+    try:
+        source_figures = (
+            get_source_pdf_figures(
+                pdf_bytes,
+                active_hash(),
+            )
+            if source_pdf_extractor_available()
+            else []
+        )
+    except Exception:
+        source_figures = []
+
+    source_record = {
+        "engine": (
+            "source_pdf_caption_v1"
+        ),
+        "figures": source_figures,
+    }
+
+    st.session_state[
+        source_figure_state_key
+    ] = source_record
 
 mineru_record = st.session_state.get(
     mineru_state_key
 )
 
-if mineru_record:
+if source_record.get(
+    "figures"
+):
+    extracted_study_figures = (
+        source_record[
+            "figures"
+        ]
+    )
+
+    figure_extraction_engine = (
+        "source_pdf_caption_v1"
+    )
+
+elif mineru_record:
     extracted_study_figures = (
         mineru_record.get(
             "figures",
             [],
         )
     )
+
     figure_extraction_engine = (
         mineru_record.get(
             "engine",
-            "mineru_precision_vlm",
+            "mineru_fallback",
         )
     )
+
 else:
-    # We no longer run the heuristic extractor automatically.
-    # It remains available as a fallback after a MinerU failure or when
-    # the user explicitly chooses fallback extraction.
     extracted_study_figures = []
-    figure_extraction_engine = "not_prepared"
+    figure_extraction_engine = (
+        "not_prepared"
+    )
 
 st.caption(
     L(
@@ -1473,31 +1546,35 @@ with tabs[4]:
     st.caption(
         L(
             lang,
-            "v0.2.5.5는 MinerU의 Figure label을 원본 PDF에서 다시 `Fig. N.` caption에 re-anchor한 뒤, 그 실제 page/column을 기준으로 Figure를 crop합니다.",
-            "v0.2.5.5 re-anchors each MinerU Figure label to the real `Fig. N.` caption in the original PDF, then crops from that source page and column.",
+            "Figure 이미지는 기본적으로 원본 PDF에서 직접 추출합니다. API를 사용하지 않으며, 실제 `Fig. N.` caption을 기준으로 같은 column의 Figure 영역을 자릅니다.",
+            "Figure images are extracted directly from the original PDF by default. No API is used; the real `Fig. N.` caption anchors a same-column crop.",
         )
     )
-
-    # --------------------------------------------------------
-    # EXTRACTION ENGINE STATUS
-    # --------------------------------------------------------
 
     status_cols = st.columns(3)
 
     with status_cols[0]:
         st.metric(
-            "MinerU SDK",
-            "Ready"
-            if mineru_available()
-            else "Missing",
+            L(
+                lang,
+                "기본 extractor",
+                "Primary extractor",
+            ),
+            (
+                "Ready"
+                if source_pdf_extractor_available()
+                else "Missing"
+            ),
         )
 
     with status_cols[1]:
         st.metric(
-            "MinerU token",
-            "Connected"
-            if mineru_token
-            else "Missing",
+            L(
+                lang,
+                "현재 engine",
+                "Current engine",
+            ),
+            figure_extraction_engine,
         )
 
     with status_cols[2]:
@@ -1516,52 +1593,56 @@ with tabs[4]:
         st.success(
             L(
                 lang,
-                f"Figure engine: {figure_extraction_engine}",
-                f"Figure engine: {figure_extraction_engine}",
+                "원본 PDF caption-anchor 추출 결과를 사용 중입니다."
+                if figure_extraction_engine == "source_pdf_caption_v1"
+                else f"Fallback engine 사용 중: {figure_extraction_engine}",
+                "Using direct original-PDF caption-anchor extraction."
+                if figure_extraction_engine == "source_pdf_caption_v1"
+                else f"Using fallback engine: {figure_extraction_engine}",
             )
         )
 
-        if (
-            mineru_available()
-            and mineru_token
-            and st.button(
-                L(
-                    lang,
-                    "🔄 MinerU Figure 강제 재추출",
-                    "🔄 Force re-extract MinerU Figures",
-                ),
-                use_container_width=True,
-                key="force_reextract_mineru_v3",
-            )
+        if st.button(
+            L(
+                lang,
+                "🔄 원본 PDF Figure 강제 재추출",
+                "🔄 Force re-extract Figures from source PDF",
+            ),
+            use_container_width=True,
+            key="force_source_pdf_figures_v1",
         ):
             with st.spinner(
                 L(
                     lang,
-                    "기존 Figure cache를 버리고 middle.json 기반으로 다시 추출 중...",
-                    "Discarding old Figure cache and re-extracting from MinerU middle.json...",
+                    "원본 PDF에서 Figure를 다시 추출 중...",
+                    "Re-extracting Figures from the original PDF...",
                 )
             ):
                 try:
-                    figures = extract_figures_with_mineru(
-                        pdf_bytes=pdf_bytes,
-                        paper_hash=active_hash(),
-                        token=mineru_token,
-                        language="en",
-                        force=True,
+                    figures = (
+                        extract_figures_from_source_pdf(
+                            pdf_bytes=pdf_bytes,
+                            paper_hash=active_hash(),
+                            force=True,
+                        )
                     )
 
                     st.session_state[
-                        mineru_state_key
+                        source_figure_state_key
                     ] = {
-                        "engine": "mineru_original_anchor_v6",
+                        "engine": (
+                            "source_pdf_caption_v1"
+                        ),
                         "figures": figures,
                     }
+
+                    st.cache_data.clear()
 
                     st.rerun()
 
                 except Exception as exc:
                     st.error(
-                        f"Forced MinerU extraction failed: {exc}"
+                        f"Source PDF extraction failed: {exc}"
                     )
 
         with st.expander(
@@ -1600,101 +1681,51 @@ with tabs[4]:
                 )
 
     else:
-        st.info(
+        st.warning(
             L(
                 lang,
-                "아직 Figure extraction을 실행하지 않았습니다.",
-                "Figure extraction has not been run yet.",
+                "원본 PDF에서 `Fig. N.` caption 기반 Figure를 찾지 못했습니다. 이런 PDF에서만 MinerU fallback을 사용할 수 있습니다.",
+                "No reliable `Fig. N.` caption-based Figures were found in the source PDF. MinerU is available only as a fallback for these PDFs.",
             )
         )
 
-        if mineru_available() and mineru_token:
-            if st.button(
+        if (
+            mineru_available()
+            and mineru_token
+            and st.button(
                 L(
                     lang,
-                    "✨ MinerU Precision으로 Figure 추출",
-                    "✨ Extract Figures with MinerU Precision",
+                    "↩ MinerU fallback 실행",
+                    "↩ Run MinerU fallback",
                 ),
-                type="primary",
                 use_container_width=True,
-                key="run_mineru_figures",
-            ):
-                with st.spinner(
-                    L(
-                        lang,
-                        "MinerU VLM이 PDF layout을 분석하고 Figure 영역을 추출 중입니다. 첫 실행은 시간이 걸릴 수 있습니다...",
-                        "MinerU VLM is analyzing the PDF layout and extracting Figure regions. The first run may take a while...",
-                    )
-                ):
-                    try:
-                        figures = (
-                            extract_figures_with_mineru(
-                                pdf_bytes=pdf_bytes,
-                                paper_hash=active_hash(),
-                                token=mineru_token,
-                                language="en",
-                                force=False,
-                            )
-                        )
-
-                        if not figures:
-                            raise RuntimeError(
-                                "MinerU completed parsing but no main Figure captions/images were matched."
-                            )
-
-                        st.session_state[
-                            mineru_state_key
-                        ] = {
-                            "engine": "mineru_original_anchor_v6",
-                            "figures": figures,
-                        }
-
-                        st.rerun()
-
-                    except Exception as exc:
-                        st.error(
-                            L(
-                                lang,
-                                f"MinerU extraction 실패: {exc}",
-                                f"MinerU extraction failed: {exc}",
-                            )
-                        )
-
-        elif not mineru_token:
-            st.warning(
-                L(
-                    lang,
-                    "MinerU Precision을 쓰려면 서버에 `MINERU_TOKEN`을 한 번 설정해야 합니다. 그 전에는 아래 fallback을 사용할 수 있습니다.",
-                    "MinerU Precision needs a server-side `MINERU_TOKEN`. Until then, you can use the fallback below.",
-                )
+                key="run_mineru_fallback_only",
             )
-
-        if st.button(
-            L(
-                lang,
-                "↩ PyMuPDF fallback으로 추출",
-                "↩ Extract with PyMuPDF fallback",
-            ),
-            use_container_width=True,
-            key="run_fallback_figures",
         ):
             with st.spinner(
                 L(
                     lang,
-                    "Fallback Figure extraction 중...",
-                    "Running fallback Figure extraction...",
+                    "MinerU fallback으로 layout 분석 중...",
+                    "Running MinerU layout fallback...",
                 )
             ):
                 try:
-                    figures = get_study_figures(
-                        pdf_bytes,
-                        active_hash(),
+                    figures = (
+                        extract_figures_with_mineru(
+                            pdf_bytes=pdf_bytes,
+                            paper_hash=active_hash(),
+                            token=mineru_token,
+                            language="en",
+                            force=True,
+                        )
                     )
 
                     st.session_state[
                         mineru_state_key
                     ] = {
-                        "engine": "pymupdf_fallback_v2",
+                        "engine": (
+                            "mineru_fallback"
+                        ),
                         "figures": figures,
                     }
 
@@ -1702,7 +1733,7 @@ with tabs[4]:
 
                 except Exception as exc:
                     st.error(
-                        f"Fallback extraction failed: {exc}"
+                        f"MinerU fallback failed: {exc}"
                     )
 
     # --------------------------------------------------------
