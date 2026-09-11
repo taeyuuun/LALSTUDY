@@ -1,5 +1,8 @@
+import base64
+import html
 import io
 import json
+import re
 import zipfile
 from pathlib import Path
 
@@ -27,7 +30,7 @@ from method_wiki import (
 from openai_sidebar import render_openai_usage_panel
 
 
-APP_VERSION = "v0.5.0.1-beta"
+APP_VERSION = "v0.5.1-beta"
 
 DATA_FILE = Path("method_profiles.json")
 IMAGE_INDEX_FILE = Path("figure_images.json")
@@ -493,6 +496,520 @@ def method_button(
         st.rerun()
 
 
+
+# ============================================================
+# Readability-first Method article helpers
+# ============================================================
+
+st.markdown(
+    """
+    <style>
+    .mw-kicker {
+        font-size: .78rem;
+        font-weight: 700;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        opacity: .58;
+        margin-bottom: .35rem;
+    }
+
+    .mw-hero {
+        border: 1px solid rgba(49, 51, 63, .14);
+        border-radius: 18px;
+        padding: 1.15rem 1.25rem;
+        background: rgba(248, 249, 251, .82);
+        margin: .2rem 0 .85rem 0;
+    }
+
+    .mw-question {
+        font-size: 1.22rem;
+        line-height: 1.45;
+        font-weight: 700;
+        margin: .15rem 0 .8rem 0;
+    }
+
+    .mw-summary {
+        font-size: 1.03rem;
+        line-height: 1.75;
+        margin: 0;
+    }
+
+    .mw-card {
+        border: 1px solid rgba(49, 51, 63, .13);
+        border-radius: 16px;
+        padding: 1rem 1.05rem .9rem 1.05rem;
+        height: 100%;
+        background: rgba(255,255,255,.78);
+    }
+
+    .mw-card-title {
+        font-size: 1rem;
+        font-weight: 800;
+        margin-bottom: .6rem;
+    }
+
+    .mw-card ul {
+        margin: .2rem 0 0 1.1rem;
+        padding: 0;
+    }
+
+    .mw-card li {
+        line-height: 1.58;
+        margin-bottom: .45rem;
+    }
+
+    .mw-tip {
+        border-left: 4px solid #ffb000;
+        border-radius: 8px;
+        padding: .8rem 1rem;
+        background: rgba(255, 246, 218, .72);
+        line-height: 1.6;
+        margin: .8rem 0 1rem 0;
+    }
+
+    .mw-meta {
+        border: 1px solid rgba(49, 51, 63, .10);
+        border-radius: 14px;
+        padding: .75rem .9rem;
+        background: rgba(248,249,251,.70);
+    }
+
+    .mw-meta-label {
+        font-size: .75rem;
+        opacity: .62;
+        margin-bottom: .15rem;
+    }
+
+    .mw-meta-value {
+        font-size: .92rem;
+        font-weight: 700;
+        line-height: 1.35;
+    }
+
+    .mw-visual-caption {
+        font-size: .76rem;
+        opacity: .64;
+        line-height: 1.4;
+        margin-top: .3rem;
+    }
+
+    div[data-testid="stVerticalBlock"] > div:has(.mw-card) {
+        height: 100%;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+def sentence_points(text, max_points=4):
+    """
+    Backward-compatible readability fallback for old DB rows.
+    Turns a long paragraph into short bullets without changing its meaning.
+    """
+    text = (text or "").strip()
+
+    if not text:
+        return []
+
+    parts = re.split(
+        r"(?<=[.!?。])\s+|;\s+",
+        text,
+    )
+
+    points = [
+        part.strip()
+        for part in parts
+        if part.strip()
+    ]
+
+    if len(points) <= 1 and len(text) > 90:
+        # Conservative clause split for legacy Korean/English mixed prose.
+        points = [
+            part.strip()
+            for part in re.split(
+                r",\s+(?=[A-Za-z가-힣])",
+                text,
+            )
+            if part.strip()
+        ]
+
+    return points[:max_points]
+
+
+def render_bullet_card(
+    title,
+    icon,
+    points,
+):
+    safe_points = [
+        html.escape(str(point))
+        for point in points
+        if str(point).strip()
+    ]
+
+    if not safe_points:
+        safe_points = ["-"]
+
+    bullets = "".join(
+        f"<li>{point}</li>"
+        for point in safe_points
+    )
+
+    st.markdown(
+        f"""
+        <div class="mw-card">
+          <div class="mw-card-title">{icon} {html.escape(title)}</div>
+          <ul>{bullets}</ul>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def method_visual_svg(
+    *,
+    method_name,
+    facets,
+    lang,
+):
+    """
+    Lightweight infographic-style visual generated locally.
+    No image API, no cloud storage, no copyright dependency.
+    """
+
+    purpose = [
+        facet_label(
+            "purpose",
+            key,
+            lang,
+        )
+        for key in facets.get(
+            "purpose",
+            [],
+        )[:2]
+    ]
+
+    material = [
+        facet_label(
+            "material",
+            key,
+            lang,
+        )
+        for key in facets.get(
+            "material",
+            [],
+        )[:2]
+    ]
+
+    principle = [
+        facet_label(
+            "principle",
+            key,
+            lang,
+        )
+        for key in facets.get(
+            "principle",
+            [],
+        )[:2]
+    ]
+
+    output = [
+        facet_label(
+            "output",
+            key,
+            lang,
+        )
+        for key in facets.get(
+            "output",
+            [],
+        )[:2]
+    ]
+
+    def text_value(values, fallback):
+        return " · ".join(values) if values else fallback
+
+    title = html.escape(
+        method_name
+    )
+
+    p1 = html.escape(
+        text_value(
+            material,
+            "Sample",
+        )
+    )
+
+    p2 = html.escape(
+        text_value(
+            principle,
+            "Measurement",
+        )
+    )
+
+    p3 = html.escape(
+        text_value(
+            output,
+            "Readout",
+        )
+    )
+
+    purpose_text = html.escape(
+        text_value(
+            purpose,
+            "Experimental question",
+        )
+    )
+
+    svg = f"""
+    <svg xmlns="http://www.w3.org/2000/svg" width="720" height="430"
+         viewBox="0 0 720 430">
+      <rect width="720" height="430" rx="28" fill="#f7f9fc"/>
+      <rect x="34" y="32" width="652" height="366" rx="22"
+            fill="#ffffff" stroke="#dfe5ec"/>
+
+      <text x="62" y="78" font-family="Arial, sans-serif"
+            font-size="18" font-weight="700" fill="#172033">{title}</text>
+      <text x="62" y="107" font-family="Arial, sans-serif"
+            font-size="14" fill="#657083">{purpose_text}</text>
+
+      <circle cx="132" cy="225" r="62" fill="#e8f2ff" stroke="#9fc3f4" stroke-width="2"/>
+      <circle cx="360" cy="225" r="62" fill="#edf8ef" stroke="#a9d7b1" stroke-width="2"/>
+      <circle cx="588" cy="225" r="62" fill="#fff4df" stroke="#edc97d" stroke-width="2"/>
+
+      <path d="M200 225 L286 225" stroke="#8b97a8" stroke-width="5"
+            stroke-linecap="round"/>
+      <path d="M428 225 L514 225" stroke="#8b97a8" stroke-width="5"
+            stroke-linecap="round"/>
+
+      <polygon points="286,225 270,216 270,234" fill="#8b97a8"/>
+      <polygon points="514,225 498,216 498,234" fill="#8b97a8"/>
+
+      <text x="132" y="218" text-anchor="middle"
+            font-family="Arial, sans-serif" font-size="14"
+            font-weight="700" fill="#253044">INPUT</text>
+      <text x="132" y="242" text-anchor="middle"
+            font-family="Arial, sans-serif" font-size="13"
+            fill="#455268">{p1}</text>
+
+      <text x="360" y="218" text-anchor="middle"
+            font-family="Arial, sans-serif" font-size="14"
+            font-weight="700" fill="#253044">PRINCIPLE</text>
+      <text x="360" y="242" text-anchor="middle"
+            font-family="Arial, sans-serif" font-size="13"
+            fill="#455268">{p2}</text>
+
+      <text x="588" y="218" text-anchor="middle"
+            font-family="Arial, sans-serif" font-size="14"
+            font-weight="700" fill="#253044">OUTPUT</text>
+      <text x="588" y="242" text-anchor="middle"
+            font-family="Arial, sans-serif" font-size="13"
+            fill="#455268">{p3}</text>
+
+      <text x="62" y="352" font-family="Arial, sans-serif"
+            font-size="12" fill="#8a94a3">LALSTUDY Method Map</text>
+    </svg>
+    """
+
+    return svg.encode(
+        "utf-8"
+    )
+
+
+def render_method_visual(
+    visual_bytes,
+):
+    encoded = base64.b64encode(
+        visual_bytes
+    ).decode("ascii")
+
+    st.markdown(
+        f"""
+        <img
+          src="data:image/svg+xml;base64,{encoded}"
+          alt="Method concept map"
+          style="
+            width:100%;
+            display:block;
+            border-radius:18px;
+            margin:0;
+          "
+        />
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def representative_figure_candidate(
+    profile,
+):
+    """
+    Find a real corpus Figure linked to this method.
+    Prefer a cached image. If none is cached, return one candidate that the
+    user can load without storing anything in Supabase.
+    """
+
+    fallback = None
+
+    for paper in (
+        profile.get(
+            "papers",
+            [],
+        )
+        or []
+    ):
+        pmcid = paper.get(
+            "pmcid",
+            "",
+        )
+
+        figures = (
+            paper.get(
+                "figures",
+                [],
+            )
+            or []
+        )
+
+        if not pmcid or not figures:
+            continue
+
+        for fig in figures:
+            fig_name = fig.get(
+                "figure",
+                "Figure",
+            )
+
+            href = (
+                image_index
+                .get(
+                    pmcid,
+                    {},
+                )
+                .get(
+                    fig_name,
+                    {},
+                )
+                .get(
+                    "href",
+                    "",
+                )
+            )
+
+            candidate = {
+                "paper": paper,
+                "figure": fig,
+                "pmcid": pmcid,
+                "href": href,
+            }
+
+            local_image = (
+                find_cached_image(
+                    pmcid,
+                    href,
+                )
+            )
+
+            if local_image:
+                candidate[
+                    "local_image"
+                ] = local_image
+
+                return candidate
+
+            if fallback is None:
+                fallback = candidate
+
+    return fallback
+
+
+def structured_method_article(
+    db_entry,
+    lang,
+):
+    suffix = (
+        "_ko"
+        if lang == "ko"
+        else "_en"
+    )
+
+    article = (
+        db_entry.get(
+            "article_json",
+            {},
+        )
+        if db_entry
+        else {}
+    ) or {}
+
+    def article_text(base, fallback=""):
+        value = article.get(
+            base + suffix
+        )
+
+        if value:
+            return value
+
+        return (
+            db_entry.get(
+                fallback + suffix,
+                "",
+            )
+            if db_entry and fallback
+            else ""
+        )
+
+    def article_list(base, fallback_field):
+        value = article.get(
+            base + suffix
+        )
+
+        if isinstance(
+            value,
+            list,
+        ) and value:
+            return value
+
+        fallback = (
+            db_entry.get(
+                fallback_field + suffix,
+                "",
+            )
+            if db_entry
+            else ""
+        )
+
+        return sentence_points(
+            fallback,
+            max_points=4,
+        )
+
+    return {
+        "key_question": article_text(
+            "key_question",
+        ),
+        "one_liner": article_text(
+            "one_liner",
+            "summary",
+        ),
+        "principle_steps": article_list(
+            "principle_steps",
+            "principle",
+        ),
+        "best_for_points": article_list(
+            "best_for_points",
+            "best_for",
+        ),
+        "limitation_points": article_list(
+            "limitation_points",
+            "limitations",
+        ),
+        "interpretation_tip": article_text(
+            "interpretation_tip",
+        ),
+    }
+
+
 # ============================================================
 # Global sidebar
 # ============================================================
@@ -938,125 +1455,532 @@ if chip_parts:
 
 
 # ============================================================
-# Encyclopedia description
+# Readability-first Method article
 # ============================================================
 
-st.subheader(
-    L(
-        lang,
-        "개요",
-        "Overview",
-    )
-)
-
 if db_entry:
-    suffix = (
-        "_ko"
-        if lang == "ko"
-        else "_en"
+    article_data = (
+        structured_method_article(
+            db_entry,
+            lang,
+        )
     )
 
-    summary = db_entry.get(
-        "summary" + suffix,
-        "",
+    hero_left, hero_right = st.columns(
+        [1.55, 1],
+        gap="large",
+        vertical_alignment="top",
     )
 
-    principle = db_entry.get(
-        "principle" + suffix,
-        "",
+    with hero_left:
+        key_question = (
+            article_data.get(
+                "key_question",
+                "",
+            )
+            or L(
+                lang,
+                "이 실험으로 무엇을 알 수 있을까?",
+                "What can this method tell us?",
+            )
+        )
+
+        one_liner = (
+            article_data.get(
+                "one_liner",
+                "",
+            )
+            or "-"
+        )
+
+        st.markdown(
+            f"""
+            <div class="mw-hero">
+              <div class="mw-kicker">{html.escape(L(lang, "한눈에 보기", "At a glance"))}</div>
+              <div class="mw-question">{html.escape(key_question)}</div>
+              <p class="mw-summary">{html.escape(one_liner)}</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        # Quick taxonomy, separated from prose.
+        quick_cols = st.columns(2)
+
+        quick_items = [
+            (
+                L(lang, "목적", "Purpose"),
+                ", ".join(
+                    facet_label(
+                        "purpose",
+                        key,
+                        lang,
+                    )
+                    for key in facets.get(
+                        "purpose",
+                        [],
+                    )[:3]
+                )
+                or "-",
+            ),
+            (
+                L(lang, "대상", "Material"),
+                ", ".join(
+                    facet_label(
+                        "material",
+                        key,
+                        lang,
+                    )
+                    for key in facets.get(
+                        "material",
+                        [],
+                    )[:3]
+                )
+                or "-",
+            ),
+            (
+                L(lang, "원리", "Principle"),
+                ", ".join(
+                    facet_label(
+                        "principle",
+                        key,
+                        lang,
+                    )
+                    for key in facets.get(
+                        "principle",
+                        [],
+                    )[:3]
+                )
+                or "-",
+            ),
+            (
+                L(lang, "결과", "Output"),
+                ", ".join(
+                    facet_label(
+                        "output",
+                        key,
+                        lang,
+                    )
+                    for key in facets.get(
+                        "output",
+                        [],
+                    )[:3]
+                )
+                or "-",
+            ),
+        ]
+
+        for i, (
+            label,
+            value,
+        ) in enumerate(
+            quick_items
+        ):
+            with quick_cols[
+                i % 2
+            ]:
+                st.markdown(
+                    f"""
+                    <div class="mw-meta">
+                      <div class="mw-meta-label">{html.escape(label)}</div>
+                      <div class="mw-meta-value">{html.escape(value)}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+    with hero_right:
+        visual_bytes = method_visual_svg(
+            method_name=selected_method,
+            facets=facets,
+            lang=lang,
+        )
+
+        render_method_visual(
+            visual_bytes
+        )
+
+        st.markdown(
+            f"""
+            <div class="mw-visual-caption">
+              {html.escape(L(
+                  lang,
+                  "Method map · 대상 → 핵심 원리 → 결과를 단순화한 개념도",
+                  "Method map · simplified input → principle → output view",
+              ))}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        representative = (
+            representative_figure_candidate(
+                profile
+            )
+        )
+
+        if representative:
+            local_image = (
+                representative.get(
+                    "local_image"
+                )
+            )
+
+            if local_image:
+                with st.expander(
+                    L(
+                        lang,
+                        "🖼 실제 논문 Figure 보기",
+                        "🖼 View a real paper Figure",
+                    )
+                ):
+                    st.image(
+                        str(local_image),
+                        use_container_width=True,
+                    )
+
+                    paper = representative[
+                        "paper"
+                    ]
+
+                    fig = representative[
+                        "figure"
+                    ]
+
+                    st.caption(
+                        f"{fig.get('figure','Figure')} · "
+                        f"{paper.get('title','')}"
+                    )
+
+                    st.caption(
+                        L(
+                            lang,
+                            "현재 corpus의 실제 OA Figure입니다. 이 기법의 표준 개념도가 아니라 실제 사용 예시입니다.",
+                            "Real OA Figure from the corpus; it is an example of use, not a canonical diagram of the method.",
+                        )
+                    )
+
+            else:
+                if st.button(
+                    L(
+                        lang,
+                        "🖼 실제 논문 Figure 1개 불러오기",
+                        "🖼 Load one real paper Figure",
+                    ),
+                    key=(
+                        "load_representative_method_figure_"
+                        + normalize_method_name(
+                            selected_method
+                        )
+                    ),
+                    use_container_width=True,
+                ):
+                    with st.spinner(
+                        L(
+                            lang,
+                            "Europe PMC에서 실제 Figure를 가져오는 중...",
+                            "Loading a real Figure from Europe PMC...",
+                        )
+                    ):
+                        ok, message = (
+                            download_inline_images(
+                                representative[
+                                    "pmcid"
+                                ]
+                            )
+                        )
+
+                    if ok:
+                        st.rerun()
+                    else:
+                        st.warning(
+                            message
+                        )
+
+    st.markdown(
+        "### "
+        + L(
+            lang,
+            "실험을 이해하는 핵심",
+            "How to understand the experiment",
+        )
     )
 
-    best_for = db_entry.get(
-        "best_for" + suffix,
-        "",
+    c1, c2, c3 = st.columns(
+        3,
+        gap="medium",
     )
-
-    limitations = db_entry.get(
-        "limitations" + suffix,
-        "",
-    )
-
-    st.write(
-        summary
-        or "-"
-    )
-
-    c1, c2 = st.columns(2)
 
     with c1:
-        st.markdown(
+        render_bullet_card(
             L(
                 lang,
-                "#### ⚙️ 핵심 원리",
-                "#### ⚙️ Core principle",
-            )
-        )
-        st.write(
-            principle
-            or "-"
-        )
-
-        st.markdown(
-            L(
-                lang,
-                "#### 🎯 언제 쓰나",
-                "#### 🎯 When to use it",
-            )
-        )
-        st.write(
-            best_for
-            or "-"
+                "핵심 원리",
+                "Core principle",
+            ),
+            "⚙️",
+            article_data.get(
+                "principle_steps",
+                [],
+            ),
         )
 
     with c2:
-        st.markdown(
+        render_bullet_card(
             L(
                 lang,
-                "#### ⚠️ 해석할 때 주의",
-                "#### ⚠️ Interpretation caveats",
-            )
-        )
-        st.write(
-            limitations
-            or "-"
-        )
-
-        quality = db_entry.get(
-            "quality_status",
-            "AI_GENERATED",
+                "언제 쓰나",
+                "When to use it",
+            ),
+            "🎯",
+            article_data.get(
+                "best_for_points",
+                [],
+            ),
         )
 
-        source_model = db_entry.get(
-            "source_model",
+    with c3:
+        render_bullet_card(
+            L(
+                lang,
+                "해석할 때 주의",
+                "Interpretation caveats",
+            ),
+            "⚠️",
+            article_data.get(
+                "limitation_points",
+                [],
+            ),
+        )
+
+    interpretation_tip = (
+        article_data.get(
+            "interpretation_tip",
             "",
         )
+    )
 
-        st.caption(
-            (
-                f"Method DB · {quality}"
-                + (
-                    f" · {source_model}"
-                    if source_model
-                    else ""
-                )
+    if interpretation_tip:
+        st.markdown(
+            f"""
+            <div class="mw-tip">
+              <strong>{html.escape(L(lang, "읽을 때 한 가지 팁", "One interpretation tip"))}</strong><br/>
+              {html.escape(interpretation_tip)}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    quality = db_entry.get(
+        "quality_status",
+        "AI_GENERATED",
+    )
+
+    source_model = db_entry.get(
+        "source_model",
+        "",
+    )
+
+    st.caption(
+        (
+            f"Method DB · {quality}"
+            + (
+                f" · {source_model}"
+                if source_model
+                else ""
             )
         )
+    )
+
+    # Existing v0.5.0 entries can be upgraded once to the structured format.
+    if not (
+        db_entry.get(
+            "article_json",
+            {},
+        )
+        or {}
+    ):
+        with st.expander(
+            L(
+                lang,
+                "✨ 이 설명을 새 가독성 포맷으로 업그레이드",
+                "✨ Upgrade this entry to the new readable format",
+            )
+        ):
+            st.caption(
+                L(
+                    lang,
+                    "기존 설명은 유지하면서 structured article만 추가합니다. 한 번만 생성하면 이후 모든 사용자가 재사용합니다.",
+                    "The existing entry is preserved; only the structured article is added. It is generated once and then reused.",
+                )
+            )
+
+            if st.button(
+                L(
+                    lang,
+                    "업그레이드 생성",
+                    "Generate upgrade",
+                ),
+                type="primary",
+                disabled=not openai_ready(),
+                key=(
+                    "upgrade_method_wiki_"
+                    + normalize_method_name(
+                        selected_method
+                    )
+                ),
+            ):
+                with st.spinner(
+                    L(
+                        lang,
+                        "가독성 높은 Method article 생성 중...",
+                        "Generating the structured Method article...",
+                    )
+                ):
+                    try:
+                        result, model, usage = (
+                            generate_method_encyclopedia_entry(
+                                canonical_name=selected_method,
+                                aliases=(
+                                    profile.get(
+                                        "aliases",
+                                        [],
+                                    )
+                                    or []
+                                ),
+                                category=(
+                                    profile.get(
+                                        "category",
+                                        "",
+                                    )
+                                    or ""
+                                ),
+                                parent_method=(
+                                    profile.get(
+                                        "parent_method",
+                                        "",
+                                    )
+                                    or ""
+                                ),
+                                submethods=(
+                                    profile.get(
+                                        "submethods",
+                                        [],
+                                    )
+                                    or []
+                                ),
+                                api_key=(
+                                    get_openai_api_key()
+                                ),
+                            )
+                        )
+
+                        generated = (
+                            result.model_dump()
+                        )
+
+                        article_json = {
+                            key: generated[
+                                key
+                            ]
+                            for key in [
+                                "key_question_ko",
+                                "key_question_en",
+                                "one_liner_ko",
+                                "one_liner_en",
+                                "principle_steps_ko",
+                                "principle_steps_en",
+                                "best_for_points_ko",
+                                "best_for_points_en",
+                                "limitation_points_ko",
+                                "limitation_points_en",
+                                "interpretation_tip_ko",
+                                "interpretation_tip_en",
+                            ]
+                        }
+
+                        payload = {
+                            "canonical_name": selected_method,
+                            "summary_ko": generated[
+                                "summary_ko"
+                            ],
+                            "summary_en": generated[
+                                "summary_en"
+                            ],
+                            "principle_ko": generated[
+                                "principle_ko"
+                            ],
+                            "principle_en": generated[
+                                "principle_en"
+                            ],
+                            "best_for_ko": generated[
+                                "best_for_ko"
+                            ],
+                            "best_for_en": generated[
+                                "best_for_en"
+                            ],
+                            "limitations_ko": generated[
+                                "limitations_ko"
+                            ],
+                            "limitations_en": generated[
+                                "limitations_en"
+                            ],
+                            "article_json": article_json,
+                            "facets": facets,
+                            "quality_status": "AI_GENERATED",
+                            "source_model": model,
+                        }
+
+                        method_wiki_store.upsert(
+                            payload
+                        )
+
+                        st.success(
+                            L(
+                                lang,
+                                "가독성 포맷으로 업그레이드했습니다.",
+                                "Upgraded to the structured readable format.",
+                            )
+                        )
+
+                        st.rerun()
+
+                    except Exception as exc:
+                        st.error(
+                            str(exc)
+                        )
 
 else:
     st.info(
         L(
             lang,
-            "이 method의 encyclopedia 설명은 아직 DB에 없습니다. 아래 버튼으로 한 번 생성하면 이후 모든 사용자가 같은 설명을 재사용합니다.",
+            "이 method의 encyclopedia 설명은 아직 DB에 없습니다. 한 번 생성하면 이후 모든 사용자가 같은 설명을 재사용합니다.",
             "This method does not yet have an encyclopedia entry in the DB. Generate it once and future users will reuse the same entry.",
         )
     )
+
+    # Always show a useful visual even before the DB entry exists.
+    visual_bytes = method_visual_svg(
+        method_name=selected_method,
+        facets=facets,
+        lang=lang,
+    )
+
+    visual_col, _ = st.columns(
+        [1.2, 1]
+    )
+
+    with visual_col:
+        render_method_visual(
+            visual_bytes
+        )
 
     if not method_wiki_ready:
         st.warning(
             L(
                 lang,
-                "`SUPABASE_METHOD_WIKI_MIGRATION.sql`을 먼저 실행해야 설명을 DB에 저장할 수 있습니다.",
-                "Run `SUPABASE_METHOD_WIKI_MIGRATION.sql` before method descriptions can be stored.",
+                "`SUPABASE_METHOD_WIKI_MIGRATION.sql`과 v0.5.1 readability migration을 먼저 실행해야 DB에 저장할 수 있습니다.",
+                "Run the Method Wiki SQL migrations before descriptions can be saved.",
             )
         )
 
@@ -1083,8 +2007,8 @@ else:
         with st.spinner(
             L(
                 lang,
-                "재사용 가능한 method 설명 생성 중...",
-                "Generating a reusable method entry...",
+                "재사용 가능한 Method article 생성 중...",
+                "Generating a reusable Method article...",
             )
         ):
             try:
@@ -1125,24 +2049,61 @@ else:
                     )
                 )
 
-                payload = (
+                generated = (
                     result.model_dump()
                 )
 
-                payload.update(
-                    {
-                        "canonical_name": (
-                            selected_method
-                        ),
-                        "facets": facets,
-                        "quality_status": (
-                            "AI_GENERATED"
-                        ),
-                        "source_model": (
-                            model
-                        ),
-                    }
-                )
+                article_json = {
+                    key: generated[
+                        key
+                    ]
+                    for key in [
+                        "key_question_ko",
+                        "key_question_en",
+                        "one_liner_ko",
+                        "one_liner_en",
+                        "principle_steps_ko",
+                        "principle_steps_en",
+                        "best_for_points_ko",
+                        "best_for_points_en",
+                        "limitation_points_ko",
+                        "limitation_points_en",
+                        "interpretation_tip_ko",
+                        "interpretation_tip_en",
+                    ]
+                }
+
+                payload = {
+                    "canonical_name": selected_method,
+                    "summary_ko": generated[
+                        "summary_ko"
+                    ],
+                    "summary_en": generated[
+                        "summary_en"
+                    ],
+                    "principle_ko": generated[
+                        "principle_ko"
+                    ],
+                    "principle_en": generated[
+                        "principle_en"
+                    ],
+                    "best_for_ko": generated[
+                        "best_for_ko"
+                    ],
+                    "best_for_en": generated[
+                        "best_for_en"
+                    ],
+                    "limitations_ko": generated[
+                        "limitations_ko"
+                    ],
+                    "limitations_en": generated[
+                        "limitations_en"
+                    ],
+                    "article_json": article_json,
+                    "facets": facets,
+                    "quality_status": "AI_GENERATED",
+                    "source_model": model,
+                }
 
                 method_wiki_store.upsert(
                     payload

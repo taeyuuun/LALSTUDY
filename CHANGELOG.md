@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.1-beta] - 2026-09-12
+
+### Method Wiki readability
+- Rebuilt method articles around an at-a-glance question + one-line answer
+- Added compact quick facts for purpose / material / principle / output
+- Replaced long prose walls with three concise bullet cards
+- Added a one-line interpretation tip
+- Added a local SVG Method Map for every method (no image API / no storage)
+- Added optional representative OA corpus Figure display
+- Added `article_json` for structured, reusable method knowledge
+- Existing v0.5.0 entries remain readable and can be upgraded once
+
 ## [0.5.0.1-beta] - 2026-09-12
 
 ### Method Wiki import hotfix

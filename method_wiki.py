@@ -261,7 +261,7 @@ class MethodWikiStore:
             self.client
             .table("method_encyclopedia")
             .select(
-                "canonical_name,normalized_name,facets,quality_status,updated_at"
+                "canonical_name,normalized_name,facets,article_json,quality_status,updated_at"
             )
             .execute()
         )
