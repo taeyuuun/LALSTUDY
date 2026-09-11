@@ -750,3 +750,20 @@ Individual Figure cache identity is intentionally stricter:
 Supplementary documents are separated from main-article cache identities.
 
 Run `SUPABASE_CANONICAL_PAPER_CACHE_MIGRATION.sql` once before using v0.4.3.
+
+
+## v0.4.4 — Fast Cache Load
+
+Saved analyses now load before full-PDF text extraction.
+
+Fast path:
+1. SHA-256 lookup in `paper_file_aliases_v2`
+2. Resolve canonical paper identity
+3. Load cached Core / Plus JSON
+4. Skip full PDF parsing
+
+For unseen files, only the first two pages are inspected to resolve DOI/PMCID/PMID.
+The complete PDF text is loaded only when a missing AI stage is explicitly requested.
+
+Figure crops are intentionally NOT stored in Supabase Storage. They continue to
+be generated locally/on-demand from the uploaded PDF.

@@ -48,6 +48,73 @@ class PaperAnalysisCache:
 
         return response is not None
 
+    def lookup_file_identity(
+        self,
+        *,
+        file_hash: str,
+    ) -> Optional[Dict]:
+        """
+        Fast path for an exact PDF file that LALSTUDY has seen before.
+
+        1) file_hash -> canonical_key via paper_file_aliases_v2
+        2) canonical_key -> paper identity via lalstudy_papers_v2
+
+        This avoids extracting the full PDF text just to discover an identity.
+        """
+
+        alias_response = (
+            self.client
+            .table("paper_file_aliases_v2")
+            .select("canonical_key")
+            .eq("file_hash", file_hash)
+            .limit(1)
+            .execute()
+        )
+
+        aliases = alias_response.data or []
+
+        if not aliases:
+            return None
+
+        canonical_key = (
+            aliases[0].get("canonical_key")
+            or ""
+        )
+
+        if not canonical_key:
+            return None
+
+        paper_response = (
+            self.client
+            .table("lalstudy_papers_v2")
+            .select(
+                "canonical_key,"
+                "identity_type,"
+                "identity_value,"
+                "confidence,"
+                "document_kind,"
+                "doi,"
+                "pmcid,"
+                "pmid,"
+                "title,"
+                "normalized_title,"
+                "publication_year"
+            )
+            .eq(
+                "canonical_key",
+                canonical_key,
+            )
+            .limit(1)
+            .execute()
+        )
+
+        rows = paper_response.data or []
+
+        if not rows:
+            return None
+
+        return rows[0]
+
     def register_paper(
         self,
         *,

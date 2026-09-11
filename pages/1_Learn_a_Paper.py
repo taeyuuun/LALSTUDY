@@ -52,7 +52,7 @@ from source_pdf_figure_extractor import (
     available as source_pdf_extractor_available,
 )
 
-APP_VERSION = "v0.4.3-beta"
+APP_VERSION = "v0.4.4-beta"
 METHOD_PROFILE_FILE = Path("method_profiles.json")
 
 st.set_page_config(
@@ -225,6 +225,49 @@ def extract_pdf_text(file_bytes):
             for x in pages
         ),
     )
+
+
+@st.cache_data(show_spinner=False)
+def extract_pdf_front_text(
+    file_bytes,
+    max_pages=2,
+):
+    """
+    Lightweight identity pass.
+
+    Only the first two pages are read. This is usually enough for DOI /
+    PMCID / PMID / year detection and is much faster than extracting the
+    complete paper.
+    """
+    reader = PdfReader(
+        io.BytesIO(file_bytes)
+    )
+
+    pieces = []
+
+    for i, page in enumerate(
+        reader.pages
+    ):
+        if i >= max_pages:
+            break
+
+        try:
+            pieces.append(
+                page.extract_text()
+                or ""
+            )
+        except Exception:
+            pieces.append("")
+
+    return "\n".join(pieces)
+
+
+@st.cache_data(show_spinner=False)
+def get_pdf_page_count(file_bytes):
+    reader = PdfReader(
+        io.BytesIO(file_bytes)
+    )
+    return len(reader.pages)
 
 
 @st.cache_data(show_spinner=False)
@@ -914,9 +957,19 @@ if uploaded is not None:
         "lalstudy_active_paper_hash"
     ] = new_hash
 
-    # We deliberately do not delete the previous paper's stage cache here.
-    # If the user uploads that same paper again in the same session, its
-    # generated modules can be reused by hash.
+    if old_hash != new_hash:
+        st.session_state.pop(
+            "lalstudy_active_paper_identity",
+            None,
+        )
+        st.session_state.pop(
+            "lalstudy_full_context:"
+            + str(old_hash),
+            None,
+        )
+
+    # Stage results remain namespaced by canonical paper + depth, so switching
+    # files does not destroy reusable results from a previous paper.
 
 pdf_bytes = st.session_state.get(
     "lalstudy_active_paper_bytes"
@@ -1016,33 +1069,63 @@ with st.container(
             st.rerun()
 
 
-with st.spinner(
-    L(
-        lang,
-        "PDF text layer 확인 중...",
-        "Reading PDF text layer...",
-    )
-):
-    pages, raw_text = (
-        extract_pdf_text(
-            pdf_bytes
+# ============================================================
+# FAST PAPER IDENTITY RESOLUTION
+# ============================================================
+#
+# Fast path:
+#   exact PDF SHA-256 -> stored file alias -> canonical paper
+#
+# New/unseen file:
+#   only first 2 PDF pages -> DOI/PMCID/PMID/title-year identity
+#
+# The complete paper text is NOT extracted here. It is loaded only if an
+# uncached AI stage actually needs it.
+
+paper_identity = active_paper_identity()
+
+if not paper_identity:
+    # 1) Exact-file alias lookup: typically one small Supabase query pair.
+    if paper_analysis_cache_ready:
+        try:
+            paper_identity = (
+                paper_analysis_cache
+                .lookup_file_identity(
+                    file_hash=active_hash(),
+                )
+            ) or {}
+        except Exception as exc:
+            st.session_state[
+                "lal_paper_cache_runtime_error"
+            ] = str(exc)
+            paper_identity = {}
+
+    # 2) Unseen file: inspect only the first two pages.
+    if not paper_identity:
+        with st.spinner(
+            L(
+                lang,
+                "논문 식별정보를 빠르게 확인 중...",
+                "Quickly identifying the paper...",
+            )
+        ):
+            front_text = (
+                extract_pdf_front_text(
+                    pdf_bytes,
+                    max_pages=2,
+                )
+            )
+
+        paper_identity = identify_paper(
+            pdf_bytes=pdf_bytes,
+            paper_text=front_text,
+            filename=paper_name,
+            file_hash=active_hash(),
         )
-    )
 
-paper_text = clean_text(
-    raw_text
-)
-
-paper_identity = identify_paper(
-    pdf_bytes=pdf_bytes,
-    paper_text=raw_text,
-    filename=paper_name,
-    file_hash=active_hash(),
-)
-
-st.session_state[
-    "lalstudy_active_paper_identity"
-] = paper_identity
+    st.session_state[
+        "lalstudy_active_paper_identity"
+    ] = paper_identity
 
 
 if (
@@ -1078,15 +1161,112 @@ if (
             ] = str(exc)
 
 
-rule_methods = detect_methods(
-    paper_text
+def ensure_full_paper_context():
+    """
+    Load the complete text only when an uncached AI stage truly needs it.
+
+    The result is kept in session state and extract_pdf_text itself is also
+    Streamlit-cached, so the PDF is not repeatedly reparsed on reruns.
+    """
+    context_key = (
+        "lalstudy_full_context:"
+        + active_hash()
+    )
+
+    cached = st.session_state.get(
+        context_key
+    )
+
+    if cached:
+        return cached
+
+    with st.spinner(
+        L(
+            lang,
+            "AI 분석에 필요한 전체 PDF text를 준비 중...",
+            "Preparing the full PDF text for AI analysis...",
+        )
+    ):
+        pages, raw_text = (
+            extract_pdf_text(
+                pdf_bytes
+            )
+        )
+
+    paper_text = clean_text(
+        raw_text
+    )
+
+    rule_methods = detect_methods(
+        paper_text
+    )
+
+    context = {
+        "pages": pages,
+        "raw_text": raw_text,
+        "paper_text": paper_text,
+        "rule_methods": rule_methods,
+    }
+
+    st.session_state[
+        context_key
+    ] = context
+
+    return context
+
+
+# Cached analyses should become visible before any full-text extraction.
+core_record = get_stage(
+    "core",
+    depth,
 )
+figures_record = get_stage(
+    "figures",
+    depth,
+)
+prereq_record = get_stage(
+    "prerequisites",
+    depth,
+)
+experiments_record = get_stage(
+    "experiments",
+    depth,
+)
+critical_record = get_stage(
+    "critical_learning",
+    depth,
+)
+
+full_context = st.session_state.get(
+    "lalstudy_full_context:"
+    + active_hash()
+)
+
+if full_context:
+    pages = full_context[
+        "pages"
+    ]
+    paper_text = full_context[
+        "paper_text"
+    ]
+    rule_methods = full_context[
+        "rule_methods"
+    ]
+else:
+    pages = []
+    paper_text = ""
+    rule_methods = detect_methods("")
+
+page_count = get_pdf_page_count(
+    pdf_bytes
+)
+
 
 m1, m2, m3 = st.columns(3)
 
 m1.metric(
     L(lang, "페이지", "Pages"),
-    len(pages),
+    page_count,
 )
 
 m2.metric(
@@ -1095,7 +1275,15 @@ m2.metric(
         "감지 method",
         "Detected methods",
     ),
-    len(rule_methods),
+    (
+        len(rule_methods)
+        if full_context
+        else L(
+            lang,
+            "필요 시",
+            "On demand",
+        )
+    ),
 )
 
 m3.metric(
@@ -1106,6 +1294,22 @@ m3.metric(
     ),
     f"{len(pdf_bytes)/(1024*1024):.1f} MB",
 )
+
+
+if (
+    core_record
+    and core_record.get(
+        "cache_hit"
+    )
+):
+    st.success(
+        L(
+            lang,
+            "⚡ 저장된 Core Analysis를 불러왔습니다. 전체 PDF text는 아직 읽지 않았고, Figure는 필요할 때 현재 PDF에서 추출합니다.",
+            "⚡ Cached Core Analysis loaded. The full PDF text has not been parsed yet; Figures will be extracted from the current PDF only when needed.",
+        ),
+        icon="☁️",
+    )
 
 
 mineru_token = get_mineru_token()
@@ -1174,33 +1378,15 @@ else:
         "not_prepared"
     )
 
-core_record = get_stage(
-    "core",
-    depth,
-)
-figures_record = get_stage(
-    "figures",
-    depth,
-)
-prereq_record = get_stage(
-    "prerequisites",
-    depth,
-)
-experiments_record = get_stage(
-    "experiments",
-    depth,
-)
-critical_record = get_stage(
-    "critical_learning",
-    depth,
-)
-
-if len(paper_text) < 500:
+if (
+    full_context
+    and len(paper_text) < 500
+):
     st.warning(
         L(
             lang,
-            "PDF text layer가 매우 적습니다. Core Analysis 품질이 낮아질 수 있고 Figure 추출은 fallback이 필요할 수 있습니다.",
-            "The PDF has little extractable text. Core Analysis may be weaker and Figure extraction may require fallback.",
+            "PDF text layer가 매우 적습니다. AI 분석 품질이 낮아질 수 있고 Figure 추출은 fallback이 필요할 수 있습니다.",
+            "The PDF has little extractable text. AI analysis quality may be weaker and Figure extraction may require fallback.",
         )
     )
 
@@ -1506,16 +1692,16 @@ if not main_ready:
         st.write(
             L(
                 lang,
-                "한 번의 클릭으로 Core Analysis와 Figure 이미지 + 원문 legend를 준비합니다.",
-                "One click prepares the Core Analysis plus Figure images and their original source legends.",
+                "저장된 Core Analysis가 있으면 즉시 불러오고, Figure 이미지와 legend는 현재 PDF에서 필요할 때만 추출합니다.",
+                "A cached Core Analysis loads immediately; Figure images and legends are extracted locally from the current PDF only when needed.",
             )
         )
 
         st.caption(
             L(
                 lang,
-                "기본 분석에서는 OpenAI가 Core에 사용됩니다. Figure crop/legend 추출은 PDF에서 직접 처리합니다.",
-                "The currently selected AI provider is used for Core. Figure crop/legend extraction is handled directly from the PDF.",
+                "DB에 없는 Core만 OpenAI를 호출합니다. Figure crop은 Storage에 저장하지 않고 기존처럼 PDF에서 직접 생성합니다.",
+                "OpenAI is called only for an uncached Core. Figure crops are not stored in cloud Storage and are generated directly from the PDF as before.",
             )
         )
 
@@ -1529,7 +1715,8 @@ if not main_ready:
                 type="primary",
                 use_container_width=True,
                 disabled=(
-                    not openai_ok
+                    (not openai_ok)
+                    and (not core_record)
                 ),
                 key=(
                     "lal_main_analyze_paper"
@@ -1589,11 +1776,21 @@ if not main_ready:
                 )
 
                 try:
+                    context = (
+                        ensure_full_paper_context()
+                    )
+                    paper_text = context[
+                        "paper_text"
+                    ]
+                    rule_methods = context[
+                        "rule_methods"
+                    ]
+
                     result, model = (
                         analyze_core(
                             paper_text=paper_text,
                             api_key=openai_api_key,
-                                                        depth=depth,
+                            depth=depth,
                             detected_methods=[
                                 name
                                 for name, _
@@ -2365,6 +2562,13 @@ if core_record:
                     )
                 ):
                     try:
+                        context = (
+                            ensure_full_paper_context()
+                        )
+                        paper_text = context[
+                            "paper_text"
+                        ]
+
                         result, model = (
                             analyze_prerequisites(
                                 paper_text=paper_text,
@@ -2519,6 +2723,16 @@ if core_record:
                     )
                 ):
                     try:
+                        context = (
+                            ensure_full_paper_context()
+                        )
+                        paper_text = context[
+                            "paper_text"
+                        ]
+                        rule_methods = context[
+                            "rule_methods"
+                        ]
+
                         result, model = (
                             analyze_experiments(
                                 paper_text=paper_text,
@@ -2755,6 +2969,13 @@ if core_record:
                     )
                 ):
                     try:
+                        context = (
+                            ensure_full_paper_context()
+                        )
+                        paper_text = context[
+                            "paper_text"
+                        ]
+
                         result, model = (
                             analyze_critical_learning(
                                 paper_text=paper_text,

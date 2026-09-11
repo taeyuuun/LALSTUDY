@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.4.4-beta] - 2026-09-12
+
+### Fast cache load
+- Added exact-file alias fast lookup before PDF text extraction
+- Unseen PDFs use only the first 2 pages for canonical identity detection
+- Cached Core/Plus analyses display without extracting the complete PDF text
+- Full PDF text is lazy-loaded only when an uncached AI stage is requested
+- Figure crops remain local/on-demand and are not stored in Supabase Storage
+- Cached Core can be used even if OpenAI is temporarily unavailable
+
 ## [0.4.3-beta] - 2026-09-12
 
 ### Canonical paper identity
