@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.0.1-beta] - 2026-09-12
+
+### Method Wiki import hotfix
+- Moved Method Wiki generation helper into `method_wiki_ai.py`
+- Removed the hard dependency on the newly-added `ai_router.generate_method_encyclopedia_entry` symbol
+- Prevents mixed-version Streamlit deployments from crashing with ImportError
+- No SQL, secret, or dependency changes
+
 ## [0.5.0-beta] - 2026-09-12
 
 ### Method Wiki

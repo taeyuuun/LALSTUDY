@@ -10,7 +10,7 @@ from ai_provider import (
     get_openai_api_key,
     openai_ready,
 )
-from ai_router import (
+from method_wiki_ai import (
     generate_method_encyclopedia_entry,
 )
 from i18n import language_selector, L
@@ -27,7 +27,7 @@ from method_wiki import (
 from openai_sidebar import render_openai_usage_panel
 
 
-APP_VERSION = "v0.5.0-beta"
+APP_VERSION = "v0.5.0.1-beta"
 
 DATA_FILE = Path("method_profiles.json")
 IMAGE_INDEX_FILE = Path("figure_images.json")
