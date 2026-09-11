@@ -3,7 +3,7 @@ from i18n import language_selector, L
 from knowledge_widget import render_knowledge_archive_widget
 from ai_provider import render_openai_usage_panel
 
-APP_VERSION = "v0.4.1-beta"
+APP_VERSION = "v0.4.1.1-beta"
 st.set_page_config(page_title="LALSTUDY · About",page_icon="ℹ️",layout="wide")
 lang=language_selector()
 
@@ -32,6 +32,18 @@ st.caption(L(lang,
     "세부 hotfix를 모두 나열하기보다 사용자 경험이 크게 바뀐 milestone만 정리합니다.",
     "This timeline highlights major user-facing milestones rather than every hotfix."
 ))
+
+with st.container(border=True):
+    st.subheader("v0.4.1.1-beta · Compact Usage UI")
+    st.markdown(L(lang,"""
+- sidebar의 3열 metric / 큰 숫자 UI를 완전히 제거
+- 무료 잔량, 오늘 사용량, 요청 수, 비용을 세로형 compact layout으로 정리
+- 긴 service-tier 안내문을 한 줄 상태 메시지로 축약
+""","""
+- Removed narrow 3-column metrics and oversized number rendering
+- Reworked usage / remaining / requests / cost into a compact vertical layout
+- Shortened the service-tier explanation into a one-line status note
+"""))
 
 with st.container(border=True):
     st.subheader("v0.4.1-beta · Usage UI")

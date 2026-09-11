@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.1.1-beta] - 2026-09-12
+
+### Sidebar hotfix
+- Removed 3-column usage metrics from the narrow sidebar
+- Replaced oversized metric values with compact single-column text
+- Shortened complimentary-balance estimation messaging
+- Added matching About patch note
+
 ## [0.4.1-beta] - 2026-09-12
 
 ### OpenAI Usage UI

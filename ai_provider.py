@@ -93,13 +93,14 @@ def _official_openai_snapshot() -> dict:
 
 
 def render_openai_usage_panel(*, lang: str = "ko") -> None:
+    """Compact single-column OpenAI usage panel for the narrow Streamlit sidebar."""
     official = _official_openai_snapshot()
     ready = openai_ready()
 
     with st.sidebar:
         with st.expander("🤖 OpenAI Usage", expanded=True):
             if ready:
-                st.success("OpenAI READY")
+                st.caption("🟢 OpenAI READY")
             else:
                 st.error(
                     _L(
@@ -124,7 +125,8 @@ def render_openai_usage_panel(*, lang: str = "ko") -> None:
                 exact = bool(official.get("complimentary_exact"))
                 budget = int(official.get("daily_budget", 0) or 0)
 
-                # Sidebar is narrow: avoid 3-column metrics, which truncate large numbers.
+                st.divider()
+
                 if remaining is not None:
                     st.caption(
                         _L(
@@ -133,55 +135,52 @@ def render_openai_usage_panel(*, lang: str = "ko") -> None:
                             "Free tokens left" if exact else "Estimated free tokens left",
                         )
                     )
-                    st.markdown(f"### **{int(remaining):,} tokens**")
+                    # Normal body-sized text instead of st.metric / heading-size text.
+                    st.write(f"**{int(remaining):,} tokens**")
 
                 if budget > 0:
                     ratio = min(max(used / budget, 0.0), 1.0)
                     st.progress(ratio)
                     st.caption(
                         _L(lang, "오늘 사용", "Used today")
-                        + f"  **{used:,} / {budget:,} tokens**"
+                        + f" · {used:,} / {budget:,} tokens"
                     )
                 else:
-                    st.write(
+                    st.caption(
                         _L(lang, "오늘 사용", "Used today")
-                        + f": **{used:,} tokens**"
+                        + f" · {used:,} tokens"
                     )
-
-                st.write(
-                    _L(lang, "요청", "Requests")
-                    + f": **{requests_count:,}**"
-                )
 
                 cost = official.get("today_cost_usd")
+                summary_parts = [
+                    _L(lang, "요청", "Requests") + f" {requests_count:,}"
+                ]
                 if cost is not None:
-                    st.write(
-                        _L(lang, "오늘 공식 과금", "Official billed cost today")
-                        + f": **${float(cost):.4f}**"
+                    summary_parts.append(
+                        _L(lang, "오늘 과금", "Cost today") + f" ${float(cost):.4f}"
                     )
+                st.caption(" · ".join(summary_parts))
 
                 if exact:
-                    st.success(
+                    st.caption(
                         _L(
                             lang,
-                            "🟢 공식 무료 token usage 확인됨",
+                            "🟢 공식 complimentary-token usage 확인됨",
                             "🟢 Official complimentary-token usage confirmed",
                         )
                     )
                 else:
-                    # The usage itself is official. Only the complimentary split is an estimate
-                    # because service_tier is not always surfaced in the Admin API response.
-                    st.info(
+                    st.caption(
                         _L(
                             lang,
-                            "🟢 OpenAI 공식 usage 동기화 완료\n\n무료 잔량만 service tier 미노출로 인해 eligible-model usage 기준으로 계산한 추정치입니다.",
-                            "🟢 Official OpenAI usage synced\n\nOnly the complimentary balance is estimated from eligible-model usage because service tier was not exposed in the API response.",
+                            "ⓘ OpenAI 공식 usage sync 완료 · 무료 잔량은 eligible-model usage 기준 추정치",
+                            "ⓘ Official OpenAI usage synced · free balance is estimated from eligible-model usage",
                         )
                     )
 
                 synced = official.get("synced_at_utc")
                 if synced:
-                    st.caption(f"sync: {synced} UTC")
+                    st.caption(f"sync · {synced} UTC")
 
                 if st.button(
                     _L(lang, "↻ 공식 usage 새로고침", "↻ Refresh official usage"),
@@ -198,24 +197,28 @@ def render_openai_usage_panel(*, lang: str = "ko") -> None:
                 budget = openai_daily_budget()
                 remaining = max(budget - usage["total_tokens"], 0) if budget > 0 else None
 
+                st.divider()
                 st.caption(_L(lang, "앱 추적 추정 잔량", "App-tracked estimated balance"))
                 if remaining is not None:
-                    st.markdown(f"### **{remaining:,} tokens**")
-                st.write(
+                    st.write(f"**{remaining:,} tokens**")
+                if budget > 0:
+                    ratio = min(max(usage["total_tokens"] / budget, 0.0), 1.0)
+                    st.progress(ratio)
+                st.caption(
                     _L(lang, "오늘 앱 추적 사용", "App-tracked usage today")
-                    + f": **{usage['total_tokens']:,} tokens**"
+                    + f" · {usage['total_tokens']:,} tokens"
                 )
-                st.write(
+                st.caption(
                     _L(lang, "호출", "Calls")
-                    + f": **{usage['calls']:,}**"
+                    + f" · {usage['calls']:,}"
                 )
 
                 if not get_openai_admin_key():
-                    st.info(
+                    st.caption(
                         _L(
                             lang,
-                            "OPENAI_ADMIN_KEY를 추가하면 Organization Usage/Costs API로 공식 동기화됩니다.",
-                            "Add OPENAI_ADMIN_KEY to enable official Organization Usage/Costs sync.",
+                            "ⓘ OPENAI_ADMIN_KEY를 추가하면 공식 Usage/Costs sync를 사용할 수 있습니다.",
+                            "ⓘ Add OPENAI_ADMIN_KEY to enable official Usage/Costs sync.",
                         )
                     )
                 else:
@@ -239,19 +242,10 @@ def render_openai_usage_panel(*, lang: str = "ko") -> None:
                             "complimentary_used": official.get("complimentary_used_tokens"),
                             "complimentary_exact": official.get("complimentary_exact"),
                             "service_tiers": official.get("service_tiers"),
-                            "models": official.get("models"),
                         }
                     )
 
-            st.caption(
-                _L(
-                    lang,
-                    "Admin API key는 서버에서만 사용되며 브라우저에 노출되지 않습니다.",
-                    "The Admin API key is used server-side only and is not exposed to the browser.",
-                )
-            )
 
-
-# Backward-compatible name for pages that have not been migrated yet.
 def render_ai_provider_panel(*, lang: str = "ko") -> None:
+    """Backward-compatible alias retained for older pages."""
     render_openai_usage_panel(lang=lang)

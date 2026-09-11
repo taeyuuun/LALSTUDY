@@ -2,7 +2,7 @@
 
 > Learn a paper, understand the experiment, and keep learning without losing context.
 
-**Current version: `v0.4.1-beta`**
+**Current version: `v0.4.1.1-beta`**
 
 ## v0.4.0 — OpenAI-only architecture
 
@@ -697,3 +697,8 @@ See `OPENAI_USAGE_SETUP.md`.
 - No more truncated large numbers
 - Clear distinction between official usage and estimated complimentary balance
 - Concise milestone patch notes in About
+
+
+## v0.4.1.1 — Compact Usage UI
+
+The OpenAI Usage sidebar now uses a single-column compact layout so token counts no longer truncate on narrow sidebars.

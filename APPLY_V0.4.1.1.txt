@@ -1,0 +1,2 @@
+Overwrite the contents of this folder into your existing LALSTUDY project root.
+No new secrets or dependencies are required.
