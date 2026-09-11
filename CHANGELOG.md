@@ -2,6 +2,19 @@
 
 All notable LALSTUDY updates will be recorded here.
 
+## [0.3.2-beta] - 2026-09-11
+
+### Learn a Paper
+- Replaced upfront module-selection UI with one `Analyze paper` primary action
+- Initial analysis now prepares Core + Figure crops + original Figure legends
+- Main hierarchy reduced to Core and Figures
+- Prerequisites, Experimental Strategy, and Critical Reading moved to optional Plus Analysis
+- Figure images display at native crop size instead of stretching to container width
+- Original PDF Figure legend is always displayed directly beneath each Figure
+- Figure AI button runs crop preparation first when needed, then AI interpretation
+
+All notable LALSTUDY updates will be recorded here.
+
 ## [0.3.1-beta] - 2026-09-11
 
 ### UX

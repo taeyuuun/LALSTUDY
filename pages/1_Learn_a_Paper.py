@@ -41,7 +41,7 @@ from source_pdf_figure_extractor import (
     available as source_pdf_extractor_available,
 )
 
-APP_VERSION = "v0.3.1-beta"
+APP_VERSION = "v0.3.2-beta"
 METHOD_PROFILE_FILE = Path("method_profiles.json")
 
 st.set_page_config(
@@ -542,7 +542,7 @@ st.sidebar.caption(
 # ============================================================
 
 st.title(
-    "📄 Learn a Paper · Selective Deep Study"
+    "📄 Learn a Paper"
 )
 
 render_knowledge_archive_widget(
@@ -554,8 +554,8 @@ render_knowledge_archive_widget(
 st.caption(
     L(
         lang,
-        "PDF를 올린 뒤 필요한 AI 분석만 먼저 선택합니다. Core Analysis는 더 이상 필수가 아닙니다.",
-        "Choose exactly which AI modules you want after uploading the PDF. Core Analysis is no longer mandatory.",
+        "논문을 한 번 분석하면 핵심 내용과 Figure + 원문 legend를 먼저 정리합니다. 더 깊은 분석은 Plus에서 필요할 때만 추가합니다.",
+        "Analyze once to prepare the core story plus Figures and their source legends. Deeper analyses are optional Plus modules.",
     )
 )
 
@@ -607,22 +607,23 @@ if not pdf_bytes:
     st.info(
         L(
             lang,
-            "PDF를 올리면 사용할 AI 분석 module을 직접 선택할 수 있습니다.",
-            "Upload a PDF, then choose exactly which AI analysis modules to run.",
+            "PDF를 올리면 `논문 분석하기` 버튼이 나타납니다.",
+            "Upload a PDF and the `Analyze paper` button will appear.",
         )
     )
 
     st.code(
         """PDF
 ↓
-원하는 AI module 선택
-☐ Core
-☐ Prerequisites
-☐ Experiments
-☐ Figures
-☐ Critical Reading
+[논문 분석하기]
 ↓
-선택한 것만 API 호출""",
+Core Analysis
++ Figure crop
++ 원문 Figure legend
+↓
+Main: 핵심 내용 / Figures
+↓
+Plus: 선수지식 / 실험 전략 / 비판적 읽기""",
         language=None,
     )
 
@@ -704,14 +705,9 @@ m3.metric(
 
 mineru_token = get_mineru_token()
 
-# ------------------------------------------------------------
-# FIGURE EXTRACTION STATE
-# ------------------------------------------------------------
-# Primary path is now fully deterministic and local:
-# original PDF -> real Fig.N caption -> same-column crop.
-#
-# MinerU is retained only as fallback for PDFs whose text/layout layer does
-# not expose reliable Figure captions.
+# ============================================================
+# MAIN ANALYSIS STATE
+# ============================================================
 
 source_figure_state_key = (
     "lal_source_pdf_figures:v2:"
@@ -727,55 +723,39 @@ source_record = st.session_state.get(
     source_figure_state_key
 )
 
-if source_record is None:
-    try:
-        source_figures = (
-            get_source_pdf_figures_v2(
-                pdf_bytes,
-                active_hash(),
-            )
-            if source_pdf_extractor_available()
-            else []
-        )
-    except Exception:
-        source_figures = []
-
-    source_record = {
-        "engine": (
-            "source_pdf_caption_v2"
-        ),
-        "figures": source_figures,
-    }
-
-    st.session_state[
-        source_figure_state_key
-    ] = source_record
-
 mineru_record = st.session_state.get(
     mineru_state_key
 )
 
-if source_record.get(
-    "figures"
+if (
+    source_record
+    and source_record.get(
+        "figures"
+    )
 ):
     extracted_study_figures = (
         source_record[
             "figures"
         ]
     )
-
     figure_extraction_engine = (
-        "source_pdf_caption_v2"
-    )
-
-elif mineru_record:
-    extracted_study_figures = (
-        mineru_record.get(
-            "figures",
-            [],
+        source_record.get(
+            "engine",
+            "source_pdf_caption_v2",
         )
     )
 
+elif (
+    mineru_record
+    and mineru_record.get(
+        "figures"
+    )
+):
+    extracted_study_figures = (
+        mineru_record[
+            "figures"
+        ]
+    )
     figure_extraction_engine = (
         mineru_record.get(
             "engine",
@@ -789,1803 +769,1669 @@ else:
         "not_prepared"
     )
 
-st.caption(
-    L(
-        lang,
-        f"Figure extraction: {figure_extraction_engine} · {len(extracted_study_figures)} figures",
-        f"Figure extraction: {figure_extraction_engine} · {len(extracted_study_figures)} figures",
-    )
+core_record = get_stage(
+    "core",
+    depth,
+)
+figures_record = get_stage(
+    "figures",
+    depth,
+)
+prereq_record = get_stage(
+    "prerequisites",
+    depth,
+)
+experiments_record = get_stage(
+    "experiments",
+    depth,
+)
+critical_record = get_stage(
+    "critical_learning",
+    depth,
 )
 
 if len(paper_text) < 500:
     st.warning(
         L(
             lang,
-            "PDF text layer가 매우 적습니다. Figure 단계는 PDF 자체를 읽지만, 다른 단계의 품질은 낮아질 수 있습니다.",
-            "The PDF has little extractable text. Figure analysis reads the PDF directly, but text-based stages may be weaker.",
+            "PDF text layer가 매우 적습니다. Core Analysis 품질이 낮아질 수 있고 Figure 추출은 fallback이 필요할 수 있습니다.",
+            "The PDF has little extractable text. Core Analysis may be weaker and Figure extraction may require fallback.",
         )
     )
 
 
-# ============================================================
-# SELECTIVE AI ANALYSIS PLAN
-# ============================================================
+def prepare_main_figures(
+    *,
+    force=False,
+):
+    """
+    Prepare Figure images + source legends with no Gemini call.
+    Source-PDF extraction is primary. MinerU is an automatic fallback only.
+    """
+    figures = []
 
-core_record = get_stage(
-    "core",
-    depth,
-)
-prereq_record = get_stage(
-    "prerequisites",
-    depth,
-)
-experiments_record = get_stage(
-    "experiments",
-    depth,
-)
-figures_record = get_stage(
-    "figures",
-    depth,
-)
-critical_record = get_stage(
-    "critical_learning",
-    depth,
-)
+    if source_pdf_extractor_available():
+        try:
+            figures = (
+                extract_figures_from_source_pdf(
+                    pdf_bytes=pdf_bytes,
+                    paper_hash=active_hash(),
+                    force=force,
+                )
+            )
+        except Exception:
+            figures = []
 
-st.divider()
-
-st.subheader(
-    L(
-        lang,
-        "✨ 이번에 사용할 AI 분석 선택",
-        "✨ Choose AI analysis for this run",
-    )
-)
-
-st.caption(
-    L(
-        lang,
-        "각 module은 서로 독립적입니다. 예를 들어 Figures만 선택하면 Core Analysis API는 호출하지 않습니다. 이미 생성된 module은 다시 호출하지 않습니다.",
-        "Modules are independent. If you select only Figures, Core Analysis is not called. Already-generated modules are reused without another API request.",
-    )
-)
-
-plan_cols = st.columns(5)
-
-with plan_cols[0]:
-    plan_core = st.checkbox(
-        L(
-            lang,
-            "🎯 Core",
-            "🎯 Core",
-        ),
-        value=False,
-        key="lal_plan_core",
-        help=L(
-            lang,
-            "Overview + Logic Map",
-            "Overview + Logic Map",
-        ),
-    )
-
-with plan_cols[1]:
-    plan_prereq = st.checkbox(
-        L(
-            lang,
-            "🧠 선수지식",
-            "🧠 Prerequisites",
-        ),
-        value=False,
-        key="lal_plan_prereq",
-    )
-
-with plan_cols[2]:
-    plan_experiments = st.checkbox(
-        L(
-            lang,
-            "🔬 실험 전략",
-            "🔬 Experiments",
-        ),
-        value=False,
-        key="lal_plan_experiments",
-    )
-
-with plan_cols[3]:
-    plan_figures = st.checkbox(
-        "🖼 Figures",
-        value=False,
-        key="lal_plan_figures",
-    )
-
-with plan_cols[4]:
-    plan_critical = st.checkbox(
-        L(
-            lang,
-            "🧐 비판적 읽기",
-            "🧐 Critical",
-        ),
-        value=False,
-        key="lal_plan_critical",
-    )
-
-selected_plan = []
-
-if plan_core:
-    selected_plan.append(
-        "core"
-    )
-
-if plan_prereq:
-    selected_plan.append(
-        "prerequisites"
-    )
-
-if plan_experiments:
-    selected_plan.append(
-        "experiments"
-    )
-
-if plan_figures:
-    selected_plan.append(
-        "figures"
-    )
-
-if plan_critical:
-    selected_plan.append(
-        "critical_learning"
-    )
-
-record_map = {
-    "core": core_record,
-    "prerequisites": prereq_record,
-    "experiments": experiments_record,
-    "figures": figures_record,
-    "critical_learning": critical_record,
-}
-
-pending_plan = [
-    module
-    for module in selected_plan
-    if not record_map.get(
-        module
-    )
-]
-
-if selected_plan:
-    st.info(
-        L(
-            lang,
-            f"선택 {len(selected_plan)}개 · 새 API request 최대 {len(pending_plan)}개 · 기존 결과는 자동 재사용",
-            f"{len(selected_plan)} selected · up to {len(pending_plan)} new API requests · cached results are reused",
+    if figures:
+        st.session_state[
+            source_figure_state_key
+        ] = {
+            "engine": (
+                "source_pdf_caption_v2"
+            ),
+            "figures": figures,
+        }
+        return (
+            figures,
+            "source_pdf_caption_v2",
         )
-    )
-else:
-    st.caption(
-        L(
-            lang,
-            "원하는 module을 하나 이상 선택하세요.",
-            "Select one or more modules.",
-        )
-    )
 
-can_run_selected = bool(
-    selected_plan
-    and server_key
-    and sdk_available()
-)
-
-if not server_key:
-    st.error(
-        L(
-            lang,
-            "서버 Gemini API key가 설정되지 않았습니다.",
-            "Server Gemini API key is not configured.",
-        )
-    )
-
-run_selected = st.button(
-    L(
-        lang,
-        "✨ 선택한 분석 실행",
-        "✨ Run selected analyses",
-    ),
-    type="primary",
-    use_container_width=True,
-    disabled=not can_run_selected,
-)
-
-if run_selected:
-    total = max(
-        1,
-        len(selected_plan),
-    )
-
-    progress = st.progress(
-        0
-    )
-
-    status = st.empty()
-
-    successes = []
-    skipped = []
-    failures = []
-
-    for index, module in enumerate(
-        selected_plan,
-        start=1,
+    if (
+        mineru_available()
+        and mineru_token
     ):
-        current = get_stage(
-            module,
-            depth,
+        figures = (
+            extract_figures_with_mineru(
+                pdf_bytes=pdf_bytes,
+                paper_hash=active_hash(),
+                token=mineru_token,
+                language="en",
+                force=force,
+            )
         )
 
-        if current:
-            skipped.append(
-                module
-            )
-
-            progress.progress(
-                index / total
-            )
-
-            continue
-
-        display_names = {
-            "core": "Core",
-            "prerequisites": (
-                "Prerequisites"
+        st.session_state[
+            mineru_state_key
+        ] = {
+            "engine": (
+                "mineru_fallback"
             ),
-            "experiments": (
-                "Experiments"
-            ),
-            "figures": "Figures",
-            "critical_learning": (
-                "Critical Reading"
-            ),
+            "figures": figures,
         }
 
-        status.info(
-            L(
-                lang,
-                f"{display_names[module]} 분석 중... ({index}/{total})",
-                f"Analyzing {display_names[module]}... ({index}/{total})",
-            )
+        return (
+            figures,
+            "mineru_fallback",
         )
 
-        # Context is opportunistic, never mandatory.
-        # If Core/Experiments exist, later modules can use them.
-        # Otherwise they analyze the paper directly.
-        core_context_record = get_stage(
-            "core",
-            depth,
-        )
-
-        core_context = (
-            core_context_record.get(
-                "data",
-                {},
-            )
-            if core_context_record
-            else {}
-        )
-
-        experiment_context_record = (
-            get_stage(
-                "experiments",
-                depth,
-            )
-        )
-
-        experiment_context = (
-            experiment_context_record.get(
-                "data",
-                {},
-            )
-            if experiment_context_record
-            else None
-        )
-
-        try:
-            if module == "core":
-                result, model = (
-                    analyze_core(
-                        paper_text=paper_text,
-                        api_key=server_key,
-                        depth=depth,
-                        detected_methods=[
-                            name
-                            for name, _
-                            in rule_methods.most_common(
-                                25
-                            )
-                        ],
-                    )
-                )
-
-            elif module == "prerequisites":
-                result, model = (
-                    analyze_prerequisites(
-                        paper_text=paper_text,
-                        core_bundle=core_context,
-                        api_key=server_key,
-                        depth=depth,
-                    )
-                )
-
-            elif module == "experiments":
-                result, model = (
-                    analyze_experiments(
-                        paper_text=paper_text,
-                        core_bundle=core_context,
-                        api_key=server_key,
-                        detected_methods=[
-                            name
-                            for name, _
-                            in rule_methods.most_common(
-                                30
-                            )
-                        ],
-                    )
-                )
-
-            elif module == "figures":
-                result, model = (
-                    analyze_figures(
-                        pdf_bytes=pdf_bytes,
-                        core_bundle=core_context,
-                        api_key=server_key,
-                    )
-                )
-
-            elif module == "critical_learning":
-                result, model = (
-                    analyze_critical_learning(
-                        paper_text=paper_text,
-                        core_bundle=core_context,
-                        experiments_bundle=experiment_context,
-                        api_key=server_key,
-                        depth=depth,
-                    )
-                )
-
-            else:
-                continue
-
-            set_stage(
-                module,
-                depth,
-                result,
-                model,
-            )
-
-            successes.append(
-                module
-            )
-
-        except Exception as exc:
-            failures.append(
-                (
-                    module,
-                    exc,
-                )
-            )
-
-        progress.progress(
-            index / total
-        )
-
-    # Refresh records immediately; no forced rerun is needed.
-    core_record = get_stage(
-        "core",
-        depth,
-    )
-    prereq_record = get_stage(
-        "prerequisites",
-        depth,
-    )
-    experiments_record = get_stage(
-        "experiments",
-        depth,
-    )
-    figures_record = get_stage(
-        "figures",
-        depth,
-    )
-    critical_record = get_stage(
-        "critical_learning",
-        depth,
+    return (
+        [],
+        "not_prepared",
     )
 
-    if failures:
-        status.warning(
-            L(
-                lang,
-                f"{len(successes)}개 완료 · {len(failures)}개 실패. 성공한 결과는 그대로 저장되었습니다.",
-                f"{len(successes)} completed · {len(failures)} failed. Successful results were preserved.",
-            )
-        )
 
-        for module, exc in failures:
-            show_stage_error(
-                module,
-                exc,
-            )
-
-    elif pending_plan:
-        status.success(
-            L(
-                lang,
-                "선택한 새 분석이 완료되었습니다.",
-                "Selected new analyses completed.",
-            )
-        )
-
-    else:
-        status.success(
-            L(
-                lang,
-                "선택한 분석은 이미 생성되어 있어 API를 다시 호출하지 않았습니다.",
-                "All selected analyses were already cached; no API call was made.",
-            )
-        )
-
-core_data = (
-    selected_language_data(
-        core_record
-    )
-    or {}
-)
-
-overview = core_data.get(
-    "overview",
-    {},
-)
-
-# ============================================================
-# MODULE STATUS
-# ============================================================
-
-# Refresh once more in case an individual module was generated on this run.
-core_record = get_stage(
-    "core",
-    depth,
-)
-prereq_record = get_stage(
-    "prerequisites",
-    depth,
-)
-experiments_record = get_stage(
-    "experiments",
-    depth,
-)
-figures_record = get_stage(
-    "figures",
-    depth,
-)
-critical_record = get_stage(
-    "critical_learning",
-    depth,
-)
-
-core_data = (
-    selected_language_data(
-        core_record
-    )
-    or {}
-)
-
-overview = core_data.get(
-    "overview",
-    {},
-)
-
-st.subheader(
-    L(
-        lang,
-        "Analysis Status",
-        "Analysis Status",
-    )
-)
-
-module_cols = st.columns(
-    5
-)
-
-module_info = [
-    (
-        module_cols[0],
-        "🎯",
-        "Core",
-        core_record,
-    ),
-    (
-        module_cols[1],
-        "🧠",
-        L(
-            lang,
-            "선수지식",
-            "Prerequisites",
-        ),
-        prereq_record,
-    ),
-    (
-        module_cols[2],
-        "🔬",
-        L(
-            lang,
-            "실험 전략",
-            "Experiments",
-        ),
-        experiments_record,
-    ),
-    (
-        module_cols[3],
-        "🖼",
-        "Figures",
-        figures_record,
-    ),
-    (
-        module_cols[4],
-        "🧐",
-        L(
-            lang,
-            "비판적 읽기",
-            "Critical",
-        ),
-        critical_record,
-    ),
-]
-
-for col, icon, label, record in (
-    module_info
+def figure_number(
+    label,
 ):
-    with col:
-        with st.container(
-            border=True
-        ):
-            st.markdown(
-                f"### {icon} {label}"
-            )
-
-            if record:
-                st.success(
-                    L(
-                        lang,
-                        "완료",
-                        "Ready",
-                    )
-                )
-
-                model_badge(
-                    record
-                )
-
-            else:
-                st.caption(
-                    L(
-                        lang,
-                        "미생성",
-                        "Not generated",
-                    )
-                )
-
-
-# ============================================================
-# TABS
-# ============================================================
-
-tabs = st.tabs(
-    [
-        L(
-            lang,
-            "🎯 한눈에 보기",
-            "🎯 Overview",
-        ),
-        L(
-            lang,
-            "🧭 논리 지도",
-            "🧭 Logic Map",
-        ),
-        L(
-            lang,
-            "🧠 선수지식",
-            "🧠 Prerequisites",
-        ),
-        L(
-            lang,
-            "🔬 실험 전략",
-            "🔬 Experiments",
-        ),
-        "🖼 Figures",
-        L(
-            lang,
-            "🧐 비판적 읽기 + 다음 학습",
-            "🧐 Critical Reading + Learn Next",
-        ),
-    ]
-)
-
-
-# ============================================================
-# OVERVIEW
-# ============================================================
-
-with tabs[0]:
-    if not core_record:
-        st.info(
-            L(
-                lang,
-                "Core Analysis를 생성하지 않았습니다. 위에서 Core를 선택하거나 다른 module만 사용해도 됩니다.",
-                "Core Analysis has not been generated. Select Core above if you want it; other modules work independently.",
-            )
-        )
-
-    st.header(
-        overview.get(
-            "title",
-            paper_name,
-        )
+    match = re.search(
+        r"(?i)(\d+)",
+        label or "",
     )
 
-    st.info(
-        overview.get(
-            "one_sentence_takeaway",
+    return (
+        int(match.group(1))
+        if match
+        else None
+    )
+
+
+def ai_figure_for_source(
+    source_item,
+    ai_figures,
+):
+    target = figure_number(
+        source_item.get(
+            "figure_label",
             "",
         )
     )
 
-    left, right = st.columns(2)
+    if target is None:
+        return None
 
-    with left:
-        st.markdown(
-            f"### {L(lang,'❓ 연구 질문','❓ Research question')}"
-        )
-        st.write(
-            overview.get(
-                "research_question",
+    for item in ai_figures:
+        if figure_number(
+            item.get(
+                "figure_label",
                 "",
             )
-        )
+        ) == target:
+            return item
 
-        st.markdown(
-            "### 🕳 Knowledge gap"
-        )
-        st.write(
-            overview.get(
-                "knowledge_gap",
-                "",
-            )
-        )
+    return None
 
-        st.markdown(
-            "### 🧪 Hypothesis"
-        )
-        st.write(
-            overview.get(
-                "hypothesis",
-                "",
-            )
-        )
 
-    with right:
-        st.markdown(
-            f"### {L(lang,'🌍 왜 중요한가','🌍 Why it matters')}"
-        )
-        st.write(
-            overview.get(
-                "why_it_matters",
-                "",
-            )
-        )
-
-        st.markdown(
-            f"### {L(lang,'✨ 새로움','✨ Novelty')}"
-        )
-        st.write(
-            overview.get(
-                "novelty",
-                "",
-            )
-        )
-
-        st.markdown(
-            f"### {L(lang,'🏁 결론','🏁 Conclusion')}"
-        )
-        st.write(
-            overview.get(
-                "conclusion",
-                "",
-            )
-        )
-
-    st.caption(
-        f"{L(lang,'분야','Field')}: "
-        + overview.get(
-            "field",
-            "-",
-        )
+def render_ai_figure_analysis(
+    figure,
+):
+    st.markdown(
+        f"#### {L(lang,'AI Figure 해석','AI Figure interpretation')}"
     )
 
-
-# ============================================================
-# LOGIC MAP
-# ============================================================
-
-with tabs[1]:
-    st.header(
-        L(
-            lang,
-            "🧭 논문의 논리 지도",
-            "🧭 Paper Logic Map",
-        )
+    role = figure.get(
+        "role_in_story",
+        "",
     )
 
-    if not core_record:
-        st.info(
-            L(
-                lang,
-                "Logic Map은 Core module을 선택했을 때 생성됩니다.",
-                "The Logic Map is generated only when the Core module is selected.",
-            )
+    if role:
+        st.caption(
+            role
         )
 
-    st.caption(
-        L(
-            lang,
-            "결과를 나열하는 대신 왜 다음 실험으로 넘어가는지 따라갑니다.",
-            "Follow why the paper moves from one experiment to the next.",
-        )
+    main_question = figure.get(
+        "main_question",
+        "",
     )
 
-    logic_map = core_data.get(
-        "logic_map",
+    if main_question:
+        st.markdown(
+            f"**{L(lang,'핵심 질문','Main question')}**"
+        )
+        st.write(
+            main_question
+        )
+
+    panels = figure.get(
+        "panels",
         [],
     )
 
-    for i, step in enumerate(
-        logic_map
-    ):
-        with st.container(
-            border=True
-        ):
-            st.markdown(
-                f"### {step.get('order',i+1)}. "
-                f"{step.get('question','')}"
+    if panels:
+        labels = [
+            panel.get(
+                "panel_label",
+                f"Panel {i+1}",
             )
-
-            c1, c2 = st.columns(2)
-
-            with c1:
-                st.markdown(
-                    f"**{L(lang,'실험 / 분석','Experiment / analysis')}**"
-                )
-                st.write(
-                    step.get(
-                        "experiment_or_analysis",
-                        "",
-                    )
-                )
-
-                st.markdown(
-                    f"**{L(lang,'직접 관찰','Direct observation')}**"
-                )
-                st.write(
-                    step.get(
-                        "observation",
-                        "",
-                    )
-                )
-
-            with c2:
-                st.markdown(
-                    f"**{L(lang,'해석 / 추론','Inference')}**"
-                )
-                st.write(
-                    step.get(
-                        "inference",
-                        "",
-                    )
-                )
-
-                st.caption(
-                    f"{L(lang,'근거','Evidence')}: "
-                    + step.get(
-                        "evidence_location",
-                        "",
-                    )
-                )
-
-        if i < len(logic_map) - 1:
-            logic_arrow()
-
-
-# ============================================================
-# PREREQUISITES
-# ============================================================
-
-with tabs[2]:
-    st.header(
-        L(
-            lang,
-            "🧠 이 논문을 이해하기 위한 선수지식",
-            "🧠 Prerequisites",
-        )
-    )
-
-    if not prereq_record:
-        st.write(
-            L(
-                lang,
-                "이 모듈은 아직 API를 호출하지 않았습니다.",
-                "This module has not called the API yet.",
+            for i, panel in enumerate(
+                panels
             )
+        ]
+
+        panel_tabs = st.tabs(
+            labels
         )
 
-        if st.button(
-            L(
-                lang,
-                "🧠 선수지식 생성",
-                "🧠 Generate prerequisites",
-            ),
-            type="primary",
-            key="generate_prerequisites",
+        for i, panel in enumerate(
+            panels
         ):
-            with st.spinner(
-                L(
-                    lang,
-                    "이 논문에서 실제로 필요한 선수지식을 선별 중...",
-                    "Selecting the prerequisites that actually unlock this paper...",
-                )
-            ):
-                try:
-                    result, model = (
-                        analyze_prerequisites(
-                            paper_text=paper_text,
-                            core_bundle=(core_record["data"] if core_record else {}),
-                            api_key=server_key,
-                            depth=depth,
-                        )
-                    )
-
-                    set_stage(
-                        "prerequisites",
-                        depth,
-                        result,
-                        model,
-                    )
-
-                    st.rerun()
-
-                except Exception as exc:
-                    show_stage_error(
-                        L(
-                            lang,
-                            "선수지식",
-                            "Prerequisites",
-                        ),
-                        exc,
-                    )
-
-    else:
-        data = selected_language_data(
-            prereq_record
-        )
-
-        model_badge(
-            prereq_record
-        )
-
-        for concept in data.get(
-            "prerequisites",
-            [],
-        ):
-            with st.expander(
-                f"{concept.get('name','')} · "
-                f"{difficulty_label(concept.get('difficulty',''))}"
-            ):
-                st.markdown(
-                    f"**{L(lang,'왜 알아야 하나?','Why do I need this?')}**"
-                )
-                st.write(
-                    concept.get(
-                        "why_needed",
-                        "",
-                    )
+            with panel_tabs[i]:
+                left, right = (
+                    st.columns(2)
                 )
 
-                st.markdown(
-                    f"**{L(lang,'배경지식','Background')}**"
-                )
-                st.write(
-                    concept.get(
-                        "explanation",
-                        "",
-                    )
-                )
-
-                st.markdown(
-                    f"**{L(lang,'이 논문에서는','In this paper')}**"
-                )
-                st.write(
-                    concept.get(
-                        "paper_context",
-                        "",
-                    )
-                )
-
-                if concept.get(
-                    "prerequisites"
-                ):
+                with left:
                     st.markdown(
-                        f"**{L(lang,'먼저 알면 좋은 것','Learn first')}**"
+                        "**WHAT**"
                     )
                     st.write(
-                        " → ".join(
-                            concept[
-                                "prerequisites"
-                            ]
+                        panel.get(
+                            "what",
+                            "",
                         )
                     )
 
+                    st.markdown(
+                        "**HOW**"
+                    )
+                    st.write(
+                        panel.get(
+                            "how",
+                            "",
+                        )
+                    )
 
-# ============================================================
-# EXPERIMENTS
-# ============================================================
+                with right:
+                    st.markdown(
+                        "**RESULT**"
+                    )
+                    st.write(
+                        panel.get(
+                            "result",
+                            "",
+                        )
+                    )
 
-with tabs[3]:
-    st.header(
-        "🔬 Experimental Strategy"
+                    st.markdown(
+                        "**INTERPRETATION**"
+                    )
+                    st.write(
+                        panel.get(
+                            "interpretation",
+                            "",
+                        )
+                    )
+
+                methods = panel.get(
+                    "methods",
+                    [],
+                )
+
+                if methods:
+                    st.caption(
+                        "Methods: "
+                        + ", ".join(
+                            methods
+                        )
+                    )
+
+    takeaway = figure.get(
+        "overall_takeaway",
+        "",
     )
 
-    if not experiments_record:
-        st.write(
+    proves = figure.get(
+        "what_it_proves",
+        "",
+    )
+
+    not_proves = figure.get(
+        "what_it_does_not_prove",
+        "",
+    )
+
+    if (
+        takeaway
+        or proves
+        or not_proves
+    ):
+        left, right = (
+            st.columns(2)
+        )
+
+        with left:
+            if takeaway:
+                st.markdown(
+                    f"**{L(lang,'전체 takeaway','Overall takeaway')}**"
+                )
+                st.write(
+                    takeaway
+                )
+
+            if proves:
+                st.markdown(
+                    f"**{L(lang,'무엇을 지지하나','What it supports')}**"
+                )
+                st.write(
+                    proves
+                )
+
+        with right:
+            if not_proves:
+                st.markdown(
+                    f"**{L(lang,'증명하지 못하는 것','What it does NOT establish')}**"
+                )
+                st.write(
+                    not_proves
+                )
+
+
+# ============================================================
+# ONE PRIMARY ENTRY POINT
+# ============================================================
+
+main_ready = bool(
+    core_record
+    and extracted_study_figures
+)
+
+if not main_ready:
+    st.divider()
+
+    with st.container(
+        border=True
+    ):
+        st.subheader(
             L(
                 lang,
-                "핵심 실험의 What/Why/Readout을 필요할 때만 생성합니다.",
-                "Generate What/Why/Readout cards only when you need them.",
+                "📄 논문 분석",
+                "📄 Paper Analysis",
             )
         )
 
-        if st.button(
+        st.write(
             L(
                 lang,
-                "🔬 실험 전략 생성",
-                "🔬 Generate experiment analysis",
-            ),
-            type="primary",
-            key="generate_experiments",
-        ):
-            with st.spinner(
+                "한 번의 클릭으로 Core Analysis와 Figure 이미지 + 원문 legend를 준비합니다.",
+                "One click prepares the Core Analysis plus Figure images and their original source legends.",
+            )
+        )
+
+        st.caption(
+            L(
+                lang,
+                "기본 분석에서 Gemini는 Core에만 사용됩니다. Figure crop/legend 추출은 먼저 PDF에서 직접 처리하고, 실패할 때만 MinerU fallback을 사용합니다.",
+                "The default analysis uses Gemini only for Core. Figure crop/legend extraction is local first, with MinerU only as fallback.",
+            )
+        )
+
+        analyze_paper_clicked = (
+            st.button(
                 L(
                     lang,
-                    "핵심 실험과 각 실험의 역할을 분석 중...",
-                    "Analyzing the major experiments and why they were used...",
+                    "📄 논문 분석하기",
+                    "📄 Analyze paper",
+                ),
+                type="primary",
+                use_container_width=True,
+                disabled=(
+                    not server_key
+                    or not sdk_available()
+                ),
+                key=(
+                    "lal_main_analyze_paper"
+                ),
+            )
+        )
+
+        if analyze_paper_clicked:
+            progress = st.progress(
+                0
+            )
+            status = st.empty()
+
+            main_errors = []
+
+            # 1) Figure images + source legend
+            if not extracted_study_figures:
+                status.info(
+                    L(
+                        lang,
+                        "1/2 · PDF에서 Figure와 원문 legend를 추출 중...",
+                        "1/2 · Extracting Figures and source legends from the PDF...",
+                    )
                 )
-            ):
+
+                try:
+                    (
+                        extracted_study_figures,
+                        figure_extraction_engine,
+                    ) = prepare_main_figures(
+                        force=False
+                    )
+
+                    if not extracted_study_figures:
+                        main_errors.append(
+                            "No Figure captions/images were detected."
+                        )
+
+                except Exception as exc:
+                    main_errors.append(
+                        "Figure extraction: "
+                        + str(exc)
+                    )
+
+            progress.progress(
+                0.45
+            )
+
+            # 2) Core AI
+            if not core_record:
+                status.info(
+                    L(
+                        lang,
+                        "2/2 · 논문의 핵심 논리와 결론을 분석 중...",
+                        "2/2 · Analyzing the paper's core logic and conclusions...",
+                    )
+                )
+
                 try:
                     result, model = (
-                        analyze_experiments(
+                        analyze_core(
                             paper_text=paper_text,
-                            core_bundle=(core_record["data"] if core_record else {}),
                             api_key=server_key,
+                            depth=depth,
                             detected_methods=[
                                 name
                                 for name, _
-                                in rule_methods.most_common(30)
+                                in rule_methods.most_common(
+                                    25
+                                )
                             ],
                         )
                     )
 
                     set_stage(
-                        "experiments",
+                        "core",
                         depth,
                         result,
                         model,
                     )
 
-                    st.rerun()
-
                 except Exception as exc:
-                    show_stage_error(
-                        L(
-                            lang,
-                            "실험 전략",
-                            "Experiments",
-                        ),
-                        exc,
+                    main_errors.append(
+                        (
+                            "Core Analysis: "
+                            + str(exc)
+                        )
                     )
 
-    else:
-        data = selected_language_data(
-            experiments_record
+            progress.progress(
+                1.0
+            )
+
+            if main_errors:
+                status.warning(
+                    L(
+                        lang,
+                        "일부 단계가 완료되지 않았습니다. 완료된 결과는 유지됩니다.",
+                        "Some steps did not complete. Successful results were preserved.",
+                    )
+                )
+
+                with st.expander(
+                    L(
+                        lang,
+                        "오류 확인",
+                        "View errors",
+                    )
+                ):
+                    for error in main_errors:
+                        st.code(
+                            error
+                        )
+            else:
+                status.success(
+                    L(
+                        lang,
+                        "논문 기본 분석 완료",
+                        "Paper analysis complete",
+                    )
+                )
+
+            st.rerun()
+
+
+# Refresh after possible analysis.
+core_record = get_stage(
+    "core",
+    depth,
+)
+figures_record = get_stage(
+    "figures",
+    depth,
+)
+prereq_record = get_stage(
+    "prerequisites",
+    depth,
+)
+experiments_record = get_stage(
+    "experiments",
+    depth,
+)
+critical_record = get_stage(
+    "critical_learning",
+    depth,
+)
+
+source_record = st.session_state.get(
+    source_figure_state_key
+)
+
+mineru_record = st.session_state.get(
+    mineru_state_key
+)
+
+if (
+    source_record
+    and source_record.get(
+        "figures"
+    )
+):
+    extracted_study_figures = (
+        source_record[
+            "figures"
+        ]
+    )
+    figure_extraction_engine = (
+        source_record.get(
+            "engine",
+            "source_pdf_caption_v2",
+        )
+    )
+
+elif (
+    mineru_record
+    and mineru_record.get(
+        "figures"
+    )
+):
+    extracted_study_figures = (
+        mineru_record[
+            "figures"
+        ]
+    )
+    figure_extraction_engine = (
+        mineru_record.get(
+            "engine",
+            "mineru_fallback",
+        )
+    )
+
+else:
+    extracted_study_figures = []
+    figure_extraction_engine = (
+        "not_prepared"
+    )
+
+core_data = (
+    selected_language_data(
+        core_record
+    )
+    or {}
+)
+
+overview = core_data.get(
+    "overview",
+    {},
+)
+
+
+# ============================================================
+# MAIN CONTENT
+# ============================================================
+
+if core_record or extracted_study_figures:
+    st.divider()
+
+    st.subheader(
+        L(
+            lang,
+            "Main Analysis",
+            "Main Analysis",
+        )
+    )
+
+    main_status = st.columns(
+        2
+    )
+
+    with main_status[0]:
+        st.success(
+            (
+                "🎯 Core · "
+                + (
+                    L(
+                        lang,
+                        "완료",
+                        "Ready",
+                    )
+                    if core_record
+                    else L(
+                        lang,
+                        "미완료",
+                        "Not ready",
+                    )
+                )
+            )
         )
 
-        model_badge(
-            experiments_record
+    with main_status[1]:
+        st.success(
+            (
+                "🖼 Figures · "
+                + str(
+                    len(
+                        extracted_study_figures
+                    )
+                )
+                + " "
+                + L(
+                    lang,
+                    "개",
+                    "found",
+                )
+            )
         )
 
-        for idx, exp in enumerate(
-            data.get(
-                "experiments",
+    main_tabs = st.tabs(
+        [
+            L(
+                lang,
+                "🎯 핵심 내용",
+                "🎯 Core",
+            ),
+            "🖼 Figures",
+        ]
+    )
+
+    # --------------------------------------------------------
+    # CORE
+    # --------------------------------------------------------
+    with main_tabs[0]:
+        if not core_record:
+            st.warning(
+                L(
+                    lang,
+                    "Core Analysis가 아직 완료되지 않았습니다. 위의 `논문 분석하기`를 다시 실행하세요.",
+                    "Core Analysis is not ready yet. Run `Analyze paper` again above.",
+                )
+            )
+
+        else:
+            model_badge(
+                core_record
+            )
+
+            st.header(
+                overview.get(
+                    "title",
+                    paper_name,
+                )
+            )
+
+            takeaway = overview.get(
+                "one_sentence_takeaway",
+                "",
+            )
+
+            if takeaway:
+                st.info(
+                    takeaway
+                )
+
+            left, right = (
+                st.columns(2)
+            )
+
+            with left:
+                st.markdown(
+                    f"### {L(lang,'❓ 연구 질문','❓ Research question')}"
+                )
+                st.write(
+                    overview.get(
+                        "research_question",
+                        "",
+                    )
+                )
+
+                st.markdown(
+                    "### 🕳 Knowledge gap"
+                )
+                st.write(
+                    overview.get(
+                        "knowledge_gap",
+                        "",
+                    )
+                )
+
+                st.markdown(
+                    "### 🧪 Hypothesis"
+                )
+                st.write(
+                    overview.get(
+                        "hypothesis",
+                        "",
+                    )
+                )
+
+            with right:
+                st.markdown(
+                    f"### {L(lang,'🌍 왜 중요한가','🌍 Why it matters')}"
+                )
+                st.write(
+                    overview.get(
+                        "why_it_matters",
+                        "",
+                    )
+                )
+
+                st.markdown(
+                    f"### {L(lang,'✨ 새로움','✨ Novelty')}"
+                )
+                st.write(
+                    overview.get(
+                        "novelty",
+                        "",
+                    )
+                )
+
+                st.markdown(
+                    f"### {L(lang,'🏁 결론','🏁 Conclusion')}"
+                )
+                st.write(
+                    overview.get(
+                        "conclusion",
+                        "",
+                    )
+                )
+
+            st.divider()
+
+            st.subheader(
+                L(
+                    lang,
+                    "🧭 논리 흐름",
+                    "🧭 Logic Map",
+                )
+            )
+
+            st.caption(
+                L(
+                    lang,
+                    "각 결과를 나열하기보다 왜 다음 실험으로 넘어가는지 따라갑니다.",
+                    "Follow why the paper moves from one experiment to the next.",
+                )
+            )
+
+            logic_map = core_data.get(
+                "logic_map",
                 [],
             )
+
+            for i, step in enumerate(
+                logic_map
+            ):
+                with st.container(
+                    border=True
+                ):
+                    st.markdown(
+                        f"### {step.get('order',i+1)}. "
+                        f"{step.get('question','')}"
+                    )
+
+                    c1, c2 = (
+                        st.columns(2)
+                    )
+
+                    with c1:
+                        st.markdown(
+                            f"**{L(lang,'실험 / 분석','Experiment / analysis')}**"
+                        )
+                        st.write(
+                            step.get(
+                                "experiment_or_analysis",
+                                "",
+                            )
+                        )
+
+                        st.markdown(
+                            f"**{L(lang,'직접 관찰','Direct observation')}**"
+                        )
+                        st.write(
+                            step.get(
+                                "observation",
+                                "",
+                            )
+                        )
+
+                    with c2:
+                        st.markdown(
+                            f"**{L(lang,'해석 / 추론','Inference')}**"
+                        )
+                        st.write(
+                            step.get(
+                                "inference",
+                                "",
+                            )
+                        )
+
+                        evidence = step.get(
+                            "evidence_location",
+                            "",
+                        )
+
+                        if evidence:
+                            st.caption(
+                                f"{L(lang,'근거','Evidence')}: {evidence}"
+                            )
+
+                if i < (
+                    len(
+                        logic_map
+                    )
+                    - 1
+                ):
+                    logic_arrow()
+
+    # --------------------------------------------------------
+    # FIGURES
+    # --------------------------------------------------------
+    with main_tabs[1]:
+        st.header(
+            "🖼 Figures"
+        )
+
+        st.caption(
+            L(
+                lang,
+                "논문 PDF에서 Figure 이미지와 바로 아래 원문 Figure legend를 한 묶음으로 가져옵니다. 이미지는 화면 폭에 맞춰 확대하지 않고 crop의 원래 크기로 표시합니다.",
+                "Each Figure is paired with its original source legend from the PDF. Images are displayed at their native crop size instead of being stretched to page width.",
+            )
+        )
+
+        if not extracted_study_figures:
+            st.warning(
+                L(
+                    lang,
+                    "Figure가 준비되지 않았습니다.",
+                    "Figures are not prepared yet.",
+                )
+            )
+
+        # Figure AI is main, but optional from the first Core request.
+        if not figures_record:
+            if st.button(
+                L(
+                    lang,
+                    "✨ Figure AI 분석하기",
+                    "✨ Analyze Figures with AI",
+                ),
+                type="primary",
+                use_container_width=False,
+                disabled=(
+                    not server_key
+                    or not sdk_available()
+                ),
+                key=(
+                    "lal_main_figure_ai"
+                ),
+            ):
+                with st.spinner(
+                    L(
+                        lang,
+                        "Figure 준비 → AI 해석을 순서대로 처리 중...",
+                        "Preparing Figures → running AI interpretation...",
+                    )
+                ):
+                    try:
+                        if not extracted_study_figures:
+                            (
+                                extracted_study_figures,
+                                figure_extraction_engine,
+                            ) = prepare_main_figures(
+                                force=False
+                            )
+
+                        result, model = (
+                            analyze_figures(
+                                pdf_bytes=pdf_bytes,
+                                core_bundle=(
+                                    core_record[
+                                        "data"
+                                    ]
+                                    if core_record
+                                    else {}
+                                ),
+                                api_key=server_key,
+                            )
+                        )
+
+                        set_stage(
+                            "figures",
+                            depth,
+                            result,
+                            model,
+                        )
+
+                        st.rerun()
+
+                    except Exception as exc:
+                        show_stage_error(
+                            "Figures",
+                            exc,
+                        )
+
+        else:
+            model_badge(
+                figures_record
+            )
+
+        ai_figure_data = (
+            selected_language_data(
+                figures_record
+            )
+            if figures_record
+            else {}
+        )
+
+        ai_figures = (
+            ai_figure_data.get(
+                "figures",
+                [],
+            )
+            if ai_figure_data
+            else []
+        )
+
+        for source_item in (
+            extracted_study_figures
         ):
-            method = exp.get(
-                "method",
-                "Method",
+            ai_item = (
+                ai_figure_for_source(
+                    source_item,
+                    ai_figures,
+                )
             )
 
             with st.container(
                 border=True
             ):
                 st.subheader(
-                    method
-                )
-
-                c1, c2 = st.columns(2)
-
-                with c1:
-                    st.markdown(
-                        f"**{L(lang,'질문','Scientific question')}**"
+                    source_item.get(
+                        "figure_label",
+                        "Figure",
                     )
-                    st.write(
-                        exp.get(
-                            "scientific_question",
-                            "",
-                        )
-                    )
-
-                    st.markdown(
-                        f"**{L(lang,'샘플 / 모델','Sample / model')}**"
-                    )
-                    st.write(
-                        exp.get(
-                            "sample_or_model",
-                            "",
-                        )
-                    )
-
-                    st.markdown(
-                        f"**{L(lang,'조작 / 비교','Manipulation / comparison')}**"
-                    )
-                    st.write(
-                        exp.get(
-                            "manipulated_variable",
-                            "",
-                        )
-                    )
-
-                    st.markdown(
-                        f"**{L(lang,'Readout','Readout')}**"
-                    )
-                    st.write(
-                        exp.get(
-                            "readout",
-                            "",
-                        )
-                    )
-
-                with c2:
-                    st.markdown(
-                        f"**{L(lang,'왜 이 method인가?','Why this method?')}**"
-                    )
-                    st.write(
-                        exp.get(
-                            "why_this_method",
-                            "",
-                        )
-                    )
-
-                    st.markdown(
-                        f"**{L(lang,'무엇을 지지하나','What it supports')}**"
-                    )
-                    st.write(
-                        exp.get(
-                            "result_meaning",
-                            "",
-                        )
-                    )
-
-                    st.markdown(
-                        f"**{L(lang,'한계','Limitation')}**"
-                    )
-                    st.write(
-                        exp.get(
-                            "limitation",
-                            "",
-                        )
-                    )
-
-                    st.caption(
-                        f"{L(lang,'근거','Evidence')}: "
-                        + exp.get(
-                            "evidence_location",
-                            "",
-                        )
-                    )
-
-                canonical = canonical_method_match(
-                    method
-                )
-
-                if canonical:
-                    b1, b2 = st.columns(2)
-
-                    with b1:
-                        method_jump_button(
-                            canonical,
-                            key=f"method_{idx}",
-                            target="method",
-                        )
-
-                    with b2:
-                        method_jump_button(
-                            canonical,
-                            key=f"figure_{idx}",
-                            target="figure",
-                        )
-
-
-# ============================================================
-# FIGURES
-# ============================================================
-
-with tabs[4]:
-    st.header(
-        "🖼 Figure-by-Figure"
-    )
-
-    st.caption(
-        L(
-            lang,
-            "Figure 이미지는 기본적으로 원본 PDF에서 직접 추출합니다. API를 사용하지 않으며, 실제 `Fig. N.` caption을 기준으로 같은 column의 Figure 영역을 자릅니다.",
-            "Figure images are extracted directly from the original PDF by default. No API is used; the real `Fig. N.` caption anchors a same-column crop.",
-        )
-    )
-
-    status_cols = st.columns(3)
-
-    with status_cols[0]:
-        st.metric(
-            L(
-                lang,
-                "기본 extractor",
-                "Primary extractor",
-            ),
-            (
-                "Ready"
-                if source_pdf_extractor_available()
-                else "Missing"
-            ),
-        )
-
-    with status_cols[1]:
-        st.metric(
-            L(
-                lang,
-                "현재 engine",
-                "Current engine",
-            ),
-            figure_extraction_engine,
-        )
-
-    with status_cols[2]:
-        st.metric(
-            L(
-                lang,
-                "추출된 Figure",
-                "Extracted figures",
-            ),
-            len(
-                extracted_study_figures
-            ),
-        )
-
-    if extracted_study_figures:
-        st.success(
-            L(
-                lang,
-                "원본 PDF caption-anchor 추출 결과를 사용 중입니다."
-                if figure_extraction_engine == "source_pdf_caption_v2"
-                else f"Fallback engine 사용 중: {figure_extraction_engine}",
-                "Using direct original-PDF caption-anchor extraction."
-                if figure_extraction_engine == "source_pdf_caption_v2"
-                else f"Using fallback engine: {figure_extraction_engine}",
-            )
-        )
-
-        if st.button(
-            L(
-                lang,
-                "🔄 원본 PDF Figure 강제 재추출",
-                "🔄 Force re-extract Figures from source PDF",
-            ),
-            use_container_width=True,
-            key="force_source_pdf_figures_v1",
-        ):
-            with st.spinner(
-                L(
-                    lang,
-                    "원본 PDF에서 Figure를 다시 추출 중...",
-                    "Re-extracting Figures from the original PDF...",
-                )
-            ):
-                try:
-                    figures = (
-                        extract_figures_from_source_pdf(
-                            pdf_bytes=pdf_bytes,
-                            paper_hash=active_hash(),
-                            force=True,
-                        )
-                    )
-
-                    st.session_state[
-                        source_figure_state_key
-                    ] = {
-                        "engine": (
-                            "source_pdf_caption_v2"
-                        ),
-                        "figures": figures,
-                    }
-
-                    st.cache_data.clear()
-
-                    st.rerun()
-
-                except Exception as exc:
-                    st.error(
-                        f"Source PDF extraction failed: {exc}"
-                    )
-
-        with st.expander(
-            L(
-                lang,
-                "🔎 추출 결과 확인",
-                "🔎 Inspect extraction",
-            ),
-            expanded=False,
-        ):
-            for item in (
-                extracted_study_figures
-            ):
-                st.markdown(
-                    f"### {item.get('figure_label','Figure')}"
-                )
-
-                st.caption(
-                    f"page {item.get('page_number','?')} · "
-                    f"{item.get('engine', figure_extraction_engine)} · "
-                    f"{item.get('asset_mode','')}"
                 )
 
                 st.image(
-                    item.get(
+                    source_item.get(
                         "image_path"
                     ),
-                    use_container_width=True,
+                    caption=(
+                        f"{source_item.get('figure_label','Figure')} · "
+                        f"page {source_item.get('page_number','?')}"
+                    ),
+                    use_container_width=False,
                 )
 
-                st.caption(
-                    item.get(
+                st.markdown(
+                    f"#### {L(lang,'원문 Figure legend','Original Figure legend')}"
+                )
+
+                st.write(
+                    source_item.get(
                         "caption",
                         "",
                     )
                 )
 
-    else:
-        st.warning(
-            L(
-                lang,
-                "원본 PDF에서 `Fig. N.` caption 기반 Figure를 찾지 못했습니다. 이런 PDF에서만 MinerU fallback을 사용할 수 있습니다.",
-                "No reliable `Fig. N.` caption-based Figures were found in the source PDF. MinerU is available only as a fallback for these PDFs.",
-            )
-        )
-
-        if (
-            mineru_available()
-            and mineru_token
-            and st.button(
-                L(
-                    lang,
-                    "↩ MinerU fallback 실행",
-                    "↩ Run MinerU fallback",
-                ),
-                use_container_width=True,
-                key="run_mineru_fallback_only",
-            )
-        ):
-            with st.spinner(
-                L(
-                    lang,
-                    "MinerU fallback으로 layout 분석 중...",
-                    "Running MinerU layout fallback...",
-                )
-            ):
-                try:
-                    figures = (
-                        extract_figures_with_mineru(
-                            pdf_bytes=pdf_bytes,
-                            paper_hash=active_hash(),
-                            token=mineru_token,
-                            language="en",
-                            force=True,
-                        )
+                if ai_item:
+                    st.divider()
+                    render_ai_figure_analysis(
+                        ai_item
                     )
 
-                    st.session_state[
-                        mineru_state_key
-                    ] = {
-                        "engine": (
-                            "mineru_fallback"
-                        ),
-                        "figures": figures,
-                    }
+        with st.expander(
+            L(
+                lang,
+                "🔧 Figure 추출 진단",
+                "🔧 Figure extraction diagnostics",
+            ),
+            expanded=False,
+        ):
+            st.caption(
+                f"engine: {figure_extraction_engine}"
+            )
+
+            if st.button(
+                L(
+                    lang,
+                    "Figure 강제 재추출",
+                    "Force re-extract Figures",
+                ),
+                key=(
+                    "lal_force_reextract_figures"
+                ),
+            ):
+                try:
+                    (
+                        figures,
+                        engine,
+                    ) = prepare_main_figures(
+                        force=True
+                    )
+
+                    st.success(
+                        f"{len(figures)} Figures · {engine}"
+                    )
 
                     st.rerun()
 
                 except Exception as exc:
                     st.error(
-                        f"MinerU fallback failed: {exc}"
+                        str(exc)
                     )
 
-    # --------------------------------------------------------
-    # AI FIGURE INTERPRETATION
-    # --------------------------------------------------------
 
+# ============================================================
+# PLUS ANALYSIS
+# ============================================================
+
+if core_record:
     st.divider()
+
     st.subheader(
+        "✨ Plus Analysis"
+    )
+
+    st.caption(
         L(
             lang,
-            "AI Figure Interpretation",
-            "AI Figure Interpretation",
+            "기본 논문 이해에는 필요하지 않은 추가 분석입니다. 원하는 항목만 열어 별도로 AI를 호출합니다.",
+            "Optional deeper analyses. Open only the module you want; each one makes its own AI request only when generated.",
         )
     )
 
-    if not extracted_study_figures:
-        st.caption(
-            L(
+    # --------------------------------------------------------
+    # PREREQUISITES PLUS
+    # --------------------------------------------------------
+    with st.expander(
+        (
+            "🧠 "
+            + L(
                 lang,
-                "Figure 이미지는 PDF에서 자동 준비됩니다. AI Figure 해석은 Core 없이도 단독 실행할 수 있습니다.",
-                "Figure images are prepared from the PDF automatically. AI Figure interpretation can run without Core.",
+                "선수지식",
+                "Prerequisites",
             )
-        )
-
-    if not figures_record:
-        if st.button(
-            L(
-                lang,
-                "🧠 Figure 해석 생성",
-                "🧠 Generate Figure interpretation",
-            ),
-            type="primary",
-            use_container_width=True,
-            key="generate_figures",
-        ):
-            with st.spinner(
+            + (
+                " · ✓"
+                if prereq_record
+                else " · Plus"
+            )
+        ),
+        expanded=False,
+    ):
+        if not prereq_record:
+            st.write(
                 L(
                     lang,
-                    "Gemini가 논문의 Figure 논리를 분석 중...",
-                    "Gemini is analyzing the Figure logic...",
+                    "이 논문을 읽는 데 필요한 배경 개념을 AI가 선별합니다.",
+                    "AI selects the background concepts most useful for understanding this paper.",
                 )
+            )
+
+            if st.button(
+                L(
+                    lang,
+                    "🧠 선수지식 추가 분석",
+                    "🧠 Add prerequisite analysis",
+                ),
+                key=(
+                    "plus_generate_prerequisites"
+                ),
+                disabled=(
+                    not server_key
+                    or not sdk_available()
+                ),
             ):
-                try:
-                    result, model = (
-                        analyze_figures(
-                            pdf_bytes=pdf_bytes,
-                            core_bundle=(core_record["data"] if core_record else {}),
-                            api_key=server_key,
+                with st.spinner(
+                    L(
+                        lang,
+                        "선수지식을 분석 중...",
+                        "Analyzing prerequisites...",
+                    )
+                ):
+                    try:
+                        result, model = (
+                            analyze_prerequisites(
+                                paper_text=paper_text,
+                                core_bundle=(
+                                    core_record[
+                                        "data"
+                                    ]
+                                ),
+                                api_key=server_key,
+                                depth=depth,
+                            )
+                        )
+
+                        set_stage(
+                            "prerequisites",
+                            depth,
+                            result,
+                            model,
+                        )
+
+                        st.rerun()
+
+                    except Exception as exc:
+                        show_stage_error(
+                            L(
+                                lang,
+                                "선수지식",
+                                "Prerequisites",
+                            ),
+                            exc,
+                        )
+
+        else:
+            data = (
+                selected_language_data(
+                    prereq_record
+                )
+                or {}
+            )
+
+            model_badge(
+                prereq_record
+            )
+
+            for concept in data.get(
+                "prerequisites",
+                [],
+            ):
+                with st.expander(
+                    (
+                        f"{concept.get('name','')} · "
+                        f"{difficulty_label(concept.get('difficulty',''))}"
+                    )
+                ):
+                    st.markdown(
+                        f"**{L(lang,'왜 알아야 하나?','Why do I need this?')}**"
+                    )
+                    st.write(
+                        concept.get(
+                            "why_needed",
+                            "",
                         )
                     )
 
-                    set_stage(
-                        "figures",
-                        depth,
-                        result,
-                        model,
+                    st.markdown(
+                        f"**{L(lang,'배경지식','Background')}**"
+                    )
+                    st.write(
+                        concept.get(
+                            "explanation",
+                            "",
+                        )
                     )
 
-                    st.rerun()
-
-                except Exception as exc:
-                    show_stage_error(
-                        "Figures",
-                        exc,
+                    st.markdown(
+                        f"**{L(lang,'이 논문에서는','In this paper')}**"
+                    )
+                    st.write(
+                        concept.get(
+                            "paper_context",
+                            "",
+                        )
                     )
 
-    else:
-        data = selected_language_data(
-            figures_record
-        )
+                    prerequisites = (
+                        concept.get(
+                            "prerequisites",
+                            [],
+                        )
+                    )
 
-        model_badge(
-            figures_record
-        )
+                    if prerequisites:
+                        st.caption(
+                            (
+                                L(
+                                    lang,
+                                    "먼저 알면 좋은 것: ",
+                                    "Learn first: ",
+                                )
+                                + " → ".join(
+                                    prerequisites
+                                )
+                            )
+                        )
 
-        for f_idx, figure in enumerate(
-            data.get(
-                "figures",
-                [],
+    # --------------------------------------------------------
+    # EXPERIMENTAL STRATEGY PLUS
+    # --------------------------------------------------------
+    with st.expander(
+        (
+            "🔬 "
+            + L(
+                lang,
+                "실험 전략",
+                "Experimental Strategy",
             )
-        ):
-            matching_item = find_matching_figure(
-                extracted_study_figures,
-                figure.get(
-                    "figure_label",
-                    "",
+            + (
+                " · ✓"
+                if experiments_record
+                else " · Plus"
+            )
+        ),
+        expanded=False,
+    ):
+        if not experiments_record:
+            st.write(
+                L(
+                    lang,
+                    "핵심 실험의 What / Why / Readout / limitation을 추가로 분석합니다.",
+                    "Add a deeper What / Why / Readout / limitation analysis of the major experiments.",
+                )
+            )
+
+            if st.button(
+                L(
+                    lang,
+                    "🔬 실험 전략 추가 분석",
+                    "🔬 Add experiment analysis",
                 ),
+                key=(
+                    "plus_generate_experiments"
+                ),
+                disabled=(
+                    not server_key
+                    or not sdk_available()
+                ),
+            ):
+                with st.spinner(
+                    L(
+                        lang,
+                        "핵심 실험을 분석 중...",
+                        "Analyzing major experiments...",
+                    )
+                ):
+                    try:
+                        result, model = (
+                            analyze_experiments(
+                                paper_text=paper_text,
+                                core_bundle=(
+                                    core_record[
+                                        "data"
+                                    ]
+                                ),
+                                api_key=server_key,
+                                detected_methods=[
+                                    name
+                                    for name, _
+                                    in rule_methods.most_common(
+                                        30
+                                    )
+                                ],
+                            )
+                        )
+
+                        set_stage(
+                            "experiments",
+                            depth,
+                            result,
+                            model,
+                        )
+
+                        st.rerun()
+
+                    except Exception as exc:
+                        show_stage_error(
+                            L(
+                                lang,
+                                "실험 전략",
+                                "Experiments",
+                            ),
+                            exc,
+                        )
+
+        else:
+            data = (
+                selected_language_data(
+                    experiments_record
+                )
+                or {}
             )
 
-            with st.expander(
-                f"{figure.get('figure_label','Figure')} — "
-                f"{figure.get('role_in_story','')}",
-                expanded=False,
+            model_badge(
+                experiments_record
+            )
+
+            for idx, exp in enumerate(
+                data.get(
+                    "experiments",
+                    [],
+                )
             ):
-                if matching_item:
-                    st.image(
-                        matching_item.get(
-                            "image_path"
-                        ),
-                        caption=(
-                            f"{matching_item.get('figure_label','Figure')} · "
-                            f"page {matching_item.get('page_number','?')}"
-                        ),
-                        use_container_width=True,
+                method = exp.get(
+                    "method",
+                    "Method",
+                )
+
+                with st.container(
+                    border=True
+                ):
+                    st.subheader(
+                        method
                     )
 
-                    with st.expander(
-                        L(
-                            lang,
-                            "원문 caption",
-                            "Source caption",
-                        ),
-                        expanded=False,
-                    ):
+                    left, right = (
+                        st.columns(2)
+                    )
+
+                    with left:
+                        st.markdown(
+                            f"**{L(lang,'질문','Scientific question')}**"
+                        )
                         st.write(
-                            matching_item.get(
-                                "caption",
+                            exp.get(
+                                "scientific_question",
                                 "",
                             )
                         )
 
-                elif extracted_study_figures:
-                    st.warning(
-                        L(
-                            lang,
-                            "AI Figure label과 추출 이미지의 자동 매칭에 실패했습니다.",
-                            "Could not automatically match the AI Figure label to an extracted image.",
+                        st.markdown(
+                            f"**{L(lang,'샘플 / 모델','Sample / model')}**"
                         )
-                    )
-
-                st.markdown(
-                    f"### {L(lang,'❓ 핵심 질문','❓ Main question')}"
-                )
-
-                st.write(
-                    figure.get(
-                        "main_question",
-                        "",
-                    )
-                )
-
-                panels = figure.get(
-                    "panels",
-                    [],
-                )
-
-                if panels:
-                    labels = [
-                        panel.get(
-                            "panel_label",
-                            f"Panel {i+1}",
+                        st.write(
+                            exp.get(
+                                "sample_or_model",
+                                "",
+                            )
                         )
-                        for i, panel in enumerate(
-                            panels
+
+                        st.markdown(
+                            f"**{L(lang,'조작 / 비교','Manipulation / comparison')}**"
                         )
-                    ]
+                        st.write(
+                            exp.get(
+                                "manipulated_variable",
+                                "",
+                            )
+                        )
 
-                    panel_tabs = st.tabs(
-                        labels
-                    )
+                        st.markdown(
+                            "**Readout**"
+                        )
+                        st.write(
+                            exp.get(
+                                "readout",
+                                "",
+                            )
+                        )
 
-                    for i, panel in enumerate(
-                        panels
-                    ):
-                        with panel_tabs[i]:
-                            c1, c2 = st.columns(
-                                2
+                    with right:
+                        st.markdown(
+                            f"**{L(lang,'왜 이 method인가?','Why this method?')}**"
+                        )
+                        st.write(
+                            exp.get(
+                                "why_this_method",
+                                "",
+                            )
+                        )
+
+                        st.markdown(
+                            f"**{L(lang,'무엇을 지지하나','What it supports')}**"
+                        )
+                        st.write(
+                            exp.get(
+                                "result_meaning",
+                                "",
+                            )
+                        )
+
+                        st.markdown(
+                            f"**{L(lang,'한계','Limitation')}**"
+                        )
+                        st.write(
+                            exp.get(
+                                "limitation",
+                                "",
+                            )
+                        )
+
+                        evidence = exp.get(
+                            "evidence_location",
+                            "",
+                        )
+
+                        if evidence:
+                            st.caption(
+                                f"{L(lang,'근거','Evidence')}: {evidence}"
                             )
 
-                            with c1:
-                                st.markdown(
-                                    "**WHAT**"
-                                )
-                                st.write(
-                                    panel.get(
-                                        "what",
-                                        "",
-                                    )
-                                )
-
-                                st.markdown(
-                                    "**HOW**"
-                                )
-                                st.write(
-                                    panel.get(
-                                        "how",
-                                        "",
-                                    )
-                                )
-
-                            with c2:
-                                st.markdown(
-                                    "**RESULT**"
-                                )
-                                st.write(
-                                    panel.get(
-                                        "result",
-                                        "",
-                                    )
-                                )
-
-                                st.markdown(
-                                    "**INTERPRETATION**"
-                                )
-                                st.write(
-                                    panel.get(
-                                        "interpretation",
-                                        "",
-                                    )
-                                )
-
-                            if panel.get(
-                                "methods"
-                            ):
-                                st.caption(
-                                    "Methods: "
-                                    + ", ".join(
-                                        panel[
-                                            "methods"
-                                        ]
-                                    )
-                                )
-
-                st.divider()
-
-                c1, c2 = st.columns(
-                    2
-                )
-
-                with c1:
-                    st.markdown(
-                        f"**{L(lang,'전체 takeaway','Overall takeaway')}**"
-                    )
-                    st.write(
-                        figure.get(
-                            "overall_takeaway",
-                            "",
+                    canonical = (
+                        canonical_method_match(
+                            method
                         )
                     )
 
-                    st.markdown(
-                        f"**{L(lang,'지지하는 것','What it supports')}**"
-                    )
-                    st.write(
-                        figure.get(
-                            "what_it_proves",
-                            "",
+                    if canonical:
+                        b1, b2 = (
+                            st.columns(2)
                         )
-                    )
 
-                with c2:
-                    st.markdown(
-                        f"**{L(lang,'증명하지 못하는 것','What it does NOT establish')}**"
-                    )
-                    st.write(
-                        figure.get(
-                            "what_it_does_not_prove",
-                            "",
-                        )
-                    )
+                        with b1:
+                            method_jump_button(
+                                canonical,
+                                key=(
+                                    f"plus_method_{idx}"
+                                ),
+                                target=(
+                                    "method"
+                                ),
+                            )
 
+                        with b2:
+                            method_jump_button(
+                                canonical,
+                                key=(
+                                    f"plus_figure_{idx}"
+                                ),
+                                target=(
+                                    "figure"
+                                ),
+                            )
 
-# ============================================================
-# CRITICAL + LEARN NEXT
-# ============================================================
-
-with tabs[5]:
-    st.header(
-        L(
-            lang,
-            "🧐 비판적 읽기 + 📚 다음 학습",
-            "🧐 Critical Reading + 📚 Learn Next",
-        )
-    )
-
-    if not critical_record:
-        st.write(
-            L(
+    # --------------------------------------------------------
+    # CRITICAL READING PLUS
+    # --------------------------------------------------------
+    with st.expander(
+        (
+            "🧐 "
+            + L(
                 lang,
-                "핵심 논리를 이해한 뒤 필요할 때만 마지막 비판적 분석을 생성합니다.",
-                "Generate the final critical-reading layer only after the core analysis.",
+                "비판적 읽기",
+                "Critical Reading",
             )
-        )
-
-        if st.button(
-            L(
-                lang,
-                "🧐 Critical Reading 생성",
-                "🧐 Generate Critical Reading",
-            ),
-            type="primary",
-            key="generate_critical",
-        ):
-            with st.spinner(
+            + (
+                " · ✓"
+                if critical_record
+                else " · Plus"
+            )
+        ),
+        expanded=False,
+    ):
+        if not critical_record:
+            st.write(
                 L(
                     lang,
-                    "논문의 가장 강한 근거와 약한 연결고리를 점검 중...",
-                    "Evaluating the strongest evidence and weakest inferential links...",
+                    "가장 강한 근거, 약한 연결고리, 대안 해석과 추가 실험을 검토합니다.",
+                    "Review the strongest evidence, weakest link, alternative explanations, and useful follow-up experiments.",
                 )
+            )
+
+            if st.button(
+                L(
+                    lang,
+                    "🧐 비판적 읽기 추가 분석",
+                    "🧐 Add critical analysis",
+                ),
+                key=(
+                    "plus_generate_critical"
+                ),
+                disabled=(
+                    not server_key
+                    or not sdk_available()
+                ),
             ):
-                try:
-                    result, model = (
-                        analyze_critical_learning(
-                            paper_text=paper_text,
-                            core_bundle=(core_record["data"] if core_record else {}),
-                            experiments_bundle=(
-                                experiments_record["data"]
-                                if experiments_record
-                                else None
-                            ),
-                            api_key=server_key,
-                            depth=depth,
+                with st.spinner(
+                    L(
+                        lang,
+                        "논문의 논리적 강점과 한계를 분석 중...",
+                        "Analyzing strengths and inferential limits...",
+                    )
+                ):
+                    try:
+                        result, model = (
+                            analyze_critical_learning(
+                                paper_text=paper_text,
+                                core_bundle=(
+                                    core_record[
+                                        "data"
+                                    ]
+                                ),
+                                experiments_bundle=(
+                                    experiments_record[
+                                        "data"
+                                    ]
+                                    if experiments_record
+                                    else None
+                                ),
+                                api_key=server_key,
+                                depth=depth,
+                            )
                         )
-                    )
 
-                    set_stage(
-                        "critical_learning",
-                        depth,
-                        result,
-                        model,
-                    )
+                        set_stage(
+                            "critical_learning",
+                            depth,
+                            result,
+                            model,
+                        )
 
-                    st.rerun()
+                        st.rerun()
 
-                except Exception as exc:
-                    show_stage_error(
-                        L(
-                            lang,
-                            "비판적 읽기",
-                            "Critical Reading",
-                        ),
-                        exc,
-                    )
+                    except Exception as exc:
+                        show_stage_error(
+                            L(
+                                lang,
+                                "비판적 읽기",
+                                "Critical Reading",
+                            ),
+                            exc,
+                        )
 
-    else:
-        data = selected_language_data(
-            critical_record
-        )
-
-        model_badge(
-            critical_record
-        )
-
-        crit = data.get(
-            "critical_reading",
-            {},
-        )
-
-        c1, c2 = st.columns(2)
-
-        with c1:
-            st.markdown(
-                f"### {L(lang,'💪 가장 강한 근거','💪 Strongest evidence')}"
-            )
-            st.write(
-                crit.get(
-                    "strongest_evidence",
-                    "",
+        else:
+            data = (
+                selected_language_data(
+                    critical_record
                 )
+                or {}
             )
 
-            st.markdown(
-                f"### {L(lang,'⚠️ 가장 약한 연결고리','⚠️ Weakest link')}"
-            )
-            st.write(
-                crit.get(
-                    "weakest_link",
-                    "",
-                )
+            model_badge(
+                critical_record
             )
 
-            st.markdown(
-                f"### {L(lang,'🧪 하나 더 한다면','🧪 One experiment to add')}"
-            )
-            st.write(
-                crit.get(
-                    "missing_control_or_experiment",
-                    "",
-                )
+            crit = data.get(
+                "critical_reading",
+                {},
             )
 
-        with c2:
-            st.markdown(
-                f"### {L(lang,'🔀 대안 해석','🔀 Alternative explanations')}"
+            left, right = (
+                st.columns(2)
             )
 
-            for item in crit.get(
-                "alternative_explanations",
-                [],
-            ):
+            with left:
                 st.markdown(
-                    f"- {item}"
+                    f"### {L(lang,'💪 가장 강한 근거','💪 Strongest evidence')}"
+                )
+                st.write(
+                    crit.get(
+                        "strongest_evidence",
+                        "",
+                    )
                 )
 
-            st.markdown(
-                f"### {L(lang,'📝 저자가 밝힌 한계','📝 Author-stated limitations')}"
-            )
-
-            for item in crit.get(
-                "author_stated_limitations",
-                [],
-            ):
                 st.markdown(
-                    f"- {item}"
+                    f"### {L(lang,'⚠️ 가장 약한 연결고리','⚠️ Weakest link')}"
+                )
+                st.write(
+                    crit.get(
+                        "weakest_link",
+                        "",
+                    )
                 )
 
-        st.markdown(
-            f"### {L(lang,'👀 Reviewer라면 물을 질문','👀 Reviewer questions')}"
-        )
+                st.markdown(
+                    f"### {L(lang,'🧪 하나 더 한다면','🧪 One experiment to add')}"
+                )
+                st.write(
+                    crit.get(
+                        "missing_control_or_experiment",
+                        "",
+                    )
+                )
 
-        for item in crit.get(
-            "reviewer_questions",
-            [],
-        ):
-            st.markdown(
-                f"- {item}"
+            with right:
+                st.markdown(
+                    f"### {L(lang,'🔀 대안 해석','🔀 Alternative explanations')}"
+                )
+
+                for item in crit.get(
+                    "alternative_explanations",
+                    [],
+                ):
+                    st.markdown(
+                        f"- {item}"
+                    )
+
+                st.markdown(
+                    f"### {L(lang,'📝 저자가 밝힌 한계','📝 Author-stated limitations')}"
+                )
+
+                for item in crit.get(
+                    "author_stated_limitations",
+                    [],
+                ):
+                    st.markdown(
+                        f"- {item}"
+                    )
+
+            reviewer_questions = (
+                crit.get(
+                    "reviewer_questions",
+                    [],
+                )
             )
 
-        st.divider()
+            if reviewer_questions:
+                st.markdown(
+                    f"### {L(lang,'👀 Reviewer라면 물을 질문','👀 Reviewer questions')}"
+                )
 
-        st.header(
-            L(
-                lang,
-                "📚 이 논문을 다시 읽기 전에",
-                "📚 Before reading again",
-            )
-        )
+                for item in reviewer_questions:
+                    st.markdown(
+                        f"- {item}"
+                    )
 
-        for item in sorted(
-            data.get(
+            learning_path = data.get(
                 "learning_path",
                 [],
-            ),
-            key=lambda x: x.get(
-                "order",
-                999,
-            ),
-        ):
-            with st.container(
-                border=True
-            ):
+            )
+
+            if learning_path:
+                st.divider()
+
                 st.markdown(
-                    f"### {item.get('order','')}. "
-                    f"{item.get('topic','')}"
+                    f"### {L(lang,'📚 다음 학습','📚 Learn next')}"
                 )
 
-                st.write(
-                    item.get(
-                        "why_now",
-                        "",
-                    )
-                )
+                for item in sorted(
+                    learning_path,
+                    key=lambda x: x.get(
+                        "order",
+                        999,
+                    ),
+                ):
+                    with st.container(
+                        border=True
+                    ):
+                        st.markdown(
+                            (
+                                f"**{item.get('order','')}. "
+                                f"{item.get('topic','')}**"
+                            )
+                        )
 
-                st.caption(
-                    f"{L(lang,'추천 행동','Suggested action')}: "
-                    + item.get(
-                        "action",
-                        "",
-                    )
-                )
+                        st.write(
+                            item.get(
+                                "why_now",
+                                "",
+                            )
+                        )
+
+                        action = item.get(
+                            "action",
+                            "",
+                        )
+
+                        if action:
+                            st.caption(
+                                f"{L(lang,'추천 행동','Suggested action')}: {action}"
+                            )
 
 
 # ============================================================
@@ -2642,7 +2488,7 @@ st.download_button(
     ),
     file_name=(
         Path(paper_name).stem
-        + "_lalstudy_v023.json"
+        + "_lalstudy_v032.json"
     ),
     mime="application/json",
     use_container_width=True,
@@ -2651,7 +2497,7 @@ st.download_button(
 st.caption(
     L(
         lang,
-        "v0.2.3-beta: 각 AI module은 독립적으로 저장됩니다. 한 module 실패가 다른 결과를 지우지 않습니다.",
-        "v0.2.3-beta: each AI module is stored independently; one module failing does not erase the others.",
+        "Main Analysis는 Core + Figure/legend를 먼저 준비하고, Plus Analysis는 필요한 경우에만 독립적으로 추가됩니다.",
+        "Main Analysis prepares Core + Figures/legends first; Plus modules are added independently only when requested.",
     )
 )

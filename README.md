@@ -2,7 +2,7 @@
 
 > Learn a paper, understand the experiment, and keep learning without losing context.
 
-**Current version: `v0.3.1-beta`**
+**Current version: `v0.3.2-beta`**
 
 LALSTUDY is an experimental scientific-paper learning platform that connects two workflows:
 
@@ -573,3 +573,40 @@ and all current MISSes are batched into one request.
 
 The query and search state live in global Streamlit session state, so they
 remain available while navigating between LALSTUDY pages.
+
+
+## v0.3.2 — Learn a Paper hierarchy
+
+`Learn a Paper` now has one clear primary flow:
+
+```text
+Upload PDF
+↓
+Analyze paper
+↓
+Core Analysis
++ Figure crop
++ original Figure legend
+↓
+MAIN
+- Core
+- Figures
+↓
+PLUS
+- Prerequisites
+- Experimental Strategy
+- Critical Reading
+```
+
+The initial `Analyze paper` action uses Gemini only for Core Analysis.
+Figure images and source legends are extracted from the source PDF without
+Gemini whenever possible.
+
+Figure images are no longer stretched to the full Streamlit container width.
+The original source legend is shown immediately below each Figure.
+
+AI Figure interpretation remains a Main feature. Its single button ensures
+Figure crops exist first, then runs Figure AI analysis sequentially.
+
+Prerequisites, Experimental Strategy, and Critical Reading are visually and
+functionally demoted to optional Plus modules.
