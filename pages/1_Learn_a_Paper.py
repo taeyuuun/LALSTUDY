@@ -13,6 +13,12 @@ from pypdf import PdfReader
 
 from i18n import language_selector, L
 from knowledge_widget import render_knowledge_archive_widget
+from knowledge_archive import get_supabase_credentials
+from paper_analysis_cache import PaperAnalysisCache
+from paper_identity import (
+    identify_paper,
+    figure_cache_stage,
+)
 from openai_sidebar import render_openai_usage_panel
 from ai_router import (
     analyze_core,
@@ -46,7 +52,7 @@ from source_pdf_figure_extractor import (
     available as source_pdf_extractor_available,
 )
 
-APP_VERSION = "v0.4.1.3-beta"
+APP_VERSION = "v0.4.3-beta"
 METHOD_PROFILE_FILE = Path("method_profiles.json")
 
 st.set_page_config(
@@ -263,6 +269,58 @@ def get_mineru_token():
 
 
 # ============================================================
+# SHARED PAPER ANALYSIS CACHE
+# ============================================================
+
+# Bump this only when prompts / output schemas change enough that
+# previously saved AI results should no longer be reused.
+PAPER_ANALYSIS_CACHE_VERSION = "analysis-v1"
+
+
+@st.cache_resource(show_spinner=False)
+def get_paper_analysis_cache(
+    supabase_url,
+    supabase_secret,
+):
+    if not supabase_url or not supabase_secret:
+        return None
+
+    try:
+        return PaperAnalysisCache(
+            supabase_url,
+            supabase_secret,
+        )
+    except Exception:
+        return None
+
+
+_supabase_url, _supabase_secret = (
+    get_supabase_credentials(
+        st.secrets
+    )
+)
+
+paper_analysis_cache = (
+    get_paper_analysis_cache(
+        _supabase_url,
+        _supabase_secret,
+    )
+)
+
+paper_analysis_cache_ready = False
+
+if paper_analysis_cache is not None:
+    try:
+        paper_analysis_cache_ready = (
+            paper_analysis_cache.ping()
+        )
+    except Exception as exc:
+        st.session_state[
+            "lal_paper_cache_connection_error"
+        ] = str(exc)
+
+
+# ============================================================
 # STATE
 # ============================================================
 
@@ -273,17 +331,191 @@ def active_hash():
     )
 
 
+def active_paper_identity():
+    return (
+        st.session_state.get(
+            "lalstudy_active_paper_identity",
+            {},
+        )
+        or {}
+    )
+
+
+def active_paper_key():
+    identity = active_paper_identity()
+
+    return (
+        identity.get(
+            "canonical_key",
+            "",
+        )
+        or (
+            f"sha256:{active_hash()}"
+            if active_hash()
+            else ""
+        )
+    )
+
+
 def stage_key(stage, depth):
     return (
-        f"lal_v023:{active_hash()}:"
+        f"lal_v043:{active_paper_key()}:"
         f"{depth}:{stage}"
     )
 
 
-def get_stage(stage, depth):
-    return st.session_state.get(
-        stage_key(stage, depth)
+def _cloud_checked_key(
+    stage,
+    depth,
+):
+    return (
+        "lal_cloud_checked:"
+        + stage_key(stage, depth)
     )
+
+
+def _record_from_cloud_row(row):
+    if not row:
+        return None
+
+    return {
+        "data": row.get(
+            "result_json",
+            {},
+        ) or {},
+        "model": row.get(
+            "model",
+            "",
+        ),
+        "provider": row.get(
+            "provider",
+            "openai",
+        ),
+        "usage": row.get(
+            "usage_json",
+            {},
+        ) or {},
+        "cache_source": "supabase",
+        "cache_hit": True,
+    }
+
+
+def get_stage(stage, depth):
+    key = stage_key(
+        stage,
+        depth,
+    )
+
+    local = st.session_state.get(
+        key
+    )
+
+    if local is not None:
+        return local
+
+    if (
+        not paper_analysis_cache_ready
+        or not active_paper_key()
+    ):
+        return None
+
+    checked_key = _cloud_checked_key(
+        stage,
+        depth,
+    )
+
+    # A Streamlit page reruns frequently. Query a cloud miss only once
+    # per stage per browser session.
+    if st.session_state.get(
+        checked_key,
+        False,
+    ):
+        return None
+
+    st.session_state[
+        checked_key
+    ] = True
+
+    try:
+        row = paper_analysis_cache.get_stage(
+            canonical_key=active_paper_key(),
+            depth=depth,
+            stage=stage,
+            analysis_version=(
+                PAPER_ANALYSIS_CACHE_VERSION
+            ),
+        )
+
+        record = _record_from_cloud_row(
+            row
+        )
+
+        if record:
+            st.session_state[
+                key
+            ] = record
+
+            st.session_state[
+                "lal_last_cloud_cache_hit"
+            ] = stage
+
+            return record
+
+    except Exception as exc:
+        st.session_state[
+            "lal_paper_cache_runtime_error"
+        ] = str(exc)
+
+    return None
+
+
+def _save_stage_to_cloud(
+    *,
+    stage,
+    depth,
+    record,
+):
+    if (
+        not paper_analysis_cache_ready
+        or not active_paper_key()
+    ):
+        return
+
+    try:
+        paper_analysis_cache.save_stage(
+            canonical_key=active_paper_key(),
+            depth=depth,
+            stage=stage,
+            analysis_version=(
+                PAPER_ANALYSIS_CACHE_VERSION
+            ),
+            result_json=record.get(
+                "data",
+                {},
+            ),
+            model=record.get(
+                "model",
+                "",
+            ),
+            provider=record.get(
+                "provider",
+                "openai",
+            ),
+            usage_json=record.get(
+                "usage",
+                {},
+            ) or {},
+        )
+
+        st.session_state[
+            "lal_last_cloud_cache_save"
+        ] = stage
+
+    except Exception as exc:
+        # Cloud caching should never destroy a successful AI result.
+        st.session_state[
+            "lal_paper_cache_runtime_error"
+        ] = str(exc)
 
 
 def set_stage(
@@ -292,23 +524,54 @@ def set_stage(
     result,
     model,
 ):
-    st.session_state[
-        stage_key(stage, depth)
-    ] = {
+    record = {
         "data": result.model_dump(),
         "model": model,
+        "provider": "openai",
+        "usage": {},
+        "cache_source": "generated",
     }
+
+    st.session_state[
+        stage_key(stage, depth)
+    ] = record
+
+    # Mark checked because this stage now exists locally.
+    st.session_state[
+        _cloud_checked_key(
+            stage,
+            depth,
+        )
+    ] = True
+
+    _save_stage_to_cloud(
+        stage=stage,
+        depth=depth,
+        record=record,
+    )
 
 
 
 def single_figure_stage_name(source_item):
-    key = (
-        source_item.get("figure_key")
-        or source_item.get("figure_label")
-        or "figure"
+    return figure_cache_stage(
+        figure_label=(
+            source_item.get(
+                "figure_label",
+                "",
+            )
+            or source_item.get(
+                "figure_key",
+                "figure",
+            )
+        ),
+        legend=(
+            source_item.get(
+                "caption",
+                "",
+            )
+            or ""
+        ),
     )
-    key = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(key))
-    return f"single_figure:{key}"
 
 
 def get_single_figure_stage(source_item, depth):
@@ -326,21 +589,41 @@ def set_single_figure_stage(
     provider,
     usage=None,
 ):
-    st.session_state[
-        stage_key(
-            single_figure_stage_name(source_item),
-            depth,
-        )
-    ] = {
+    stage = single_figure_stage_name(
+        source_item
+    )
+
+    record = {
         "data": result.model_dump(),
         "model": model,
         "provider": provider,
-        "usage": usage,
+        "usage": usage or {},
+        "cache_source": "generated",
     }
+
+    st.session_state[
+        stage_key(
+            stage,
+            depth,
+        )
+    ] = record
+
+    st.session_state[
+        _cloud_checked_key(
+            stage,
+            depth,
+        )
+    ] = True
+
+    _save_stage_to_cloud(
+        stage=stage,
+        depth=depth,
+        record=record,
+    )
 
 
 def clear_current_paper():
-    current_hash = active_hash()
+    current_key = active_paper_key()
 
     for key in list(
         st.session_state.keys()
@@ -349,8 +632,11 @@ def clear_current_paper():
             str(key).startswith(
                 "lalstudy_active_paper_"
             )
-            or str(key).startswith(
-                f"lal_v023:{current_hash}:"
+            or (
+                current_key
+                and str(key).startswith(
+                    f"lal_v043:{current_key}:"
+                )
             )
         ):
             del st.session_state[key]
@@ -414,8 +700,16 @@ def model_badge(record):
             for value in [provider, model]
             if value
         )
+        suffix = (
+            " · ☁️ cached"
+            if record.get(
+                "cache_hit"
+            )
+            else ""
+        )
+
         st.caption(
-            f"AI: {label or model}"
+            f"AI: {label or model}{suffix}"
         )
 
 
@@ -571,6 +865,16 @@ st.sidebar.caption(
 )
 
 
+if paper_analysis_cache_ready:
+    st.sidebar.caption(
+        "☁️ Canonical paper cache · connected"
+    )
+else:
+    st.sidebar.caption(
+        "☁️ Canonical paper cache · migration needed"
+    )
+
+
 st.caption(
     L(
         lang,
@@ -663,6 +967,42 @@ with st.container(
             f"{paper_name}"
         )
 
+        identity = active_paper_identity()
+
+        if identity:
+            identity_type = identity.get(
+                "identity_type",
+                "sha256",
+            )
+
+            identity_value = identity.get(
+                "identity_value",
+                "",
+            )
+
+            confidence = identity.get(
+                "confidence",
+                "",
+            )
+
+            display_value = (
+                identity_value
+                if identity_type
+                in {"doi", "pmcid", "pmid"}
+                else identity_type
+            )
+
+            st.caption(
+                "Paper identity · "
+                f"{identity_type.upper()} "
+                f"{display_value}"
+                + (
+                    f" · {confidence}"
+                    if confidence
+                    else ""
+                )
+            )
+
     with c2:
         if st.button(
             L(
@@ -692,6 +1032,51 @@ with st.spinner(
 paper_text = clean_text(
     raw_text
 )
+
+paper_identity = identify_paper(
+    pdf_bytes=pdf_bytes,
+    paper_text=raw_text,
+    filename=paper_name,
+    file_hash=active_hash(),
+)
+
+st.session_state[
+    "lalstudy_active_paper_identity"
+] = paper_identity
+
+
+if (
+    active_paper_key()
+    and paper_analysis_cache_ready
+):
+    registration_key = (
+        "lal_cloud_paper_registered:"
+        + active_hash()
+        + ":"
+        + active_paper_key()
+    )
+
+    if not st.session_state.get(
+        registration_key,
+        False,
+    ):
+        try:
+            paper_analysis_cache.register_paper(
+                identity=paper_identity,
+                file_hash=active_hash(),
+                filename=paper_name,
+                file_size=len(pdf_bytes),
+            )
+
+            st.session_state[
+                registration_key
+            ] = True
+
+        except Exception as exc:
+            st.session_state[
+                "lal_paper_cache_runtime_error"
+            ] = str(exc)
+
 
 rule_methods = detect_methods(
     paper_text
@@ -835,7 +1220,7 @@ def prepare_main_figures(
             figures = (
                 extract_figures_from_source_pdf(
                     pdf_bytes=pdf_bytes,
-                    paper_hash=active_hash(),
+                    canonical_key=active_paper_key(),
                     force=force,
                 )
             )
@@ -863,7 +1248,7 @@ def prepare_main_figures(
         figures = (
             extract_figures_with_mineru(
                 pdf_bytes=pdf_bytes,
-                paper_hash=active_hash(),
+                canonical_key=active_paper_key(),
                 token=mineru_token,
                 language="en",
                 force=force,
@@ -2579,6 +2964,8 @@ export_data = {
     "lalstudy_version": APP_VERSION,
     "paper_name": paper_name,
     "paper_hash": active_hash(),
+    "paper_identity": active_paper_identity(),
+    "canonical_paper_key": active_paper_key(),
     "depth": depth,
     "modules": {
         key: (

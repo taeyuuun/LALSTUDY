@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.4.3-beta] - 2026-09-12
+
+### Canonical paper identity
+- Replaced exact-file-only cache identity with DOI > PMCID > PMID > normalized title+year > SHA-256 fallback
+- Added canonical paper entity and file-alias tables
+- Different PDF files of the same DOI can now reuse paper-level AI results
+- Supplementary documents are separated from main-article identities
+- Individual Figure cache keys now include Figure label + normalized legend hash
+- v0.4.2 exact-hash cache rows are promoted when possible
+
+## [0.4.2-beta] - 2026-09-12
+
+### Shared Paper Analysis Cache
+- Added Supabase-backed cache for Core, Plus modules, and per-Figure AI analyses
+- Exact PDF SHA-256 hash is used as the paper identity
+- Cache hits skip the OpenAI call and reuse saved JSON results
+- Stores AI output and metadata only; no PDF bytes, full paper text, or Figure image bytes are stored
+- Added cache hit counters and server-only RLS configuration
+
 ## [0.4.1.3-beta] - 2026-09-12
 
 ### Figure workspace

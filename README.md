@@ -715,3 +715,38 @@ Learn a Paper now renders each Figure in a two-column workspace:
 the Figure stays compact on the left, while the source legend and Figure AI
 interpretation remain on the right. Long legends scroll independently so the
 analysis starts closer to the Figure.
+
+
+## v0.4.2 — Shared Paper Analysis Cache
+
+AI analysis results are now reusable across sessions/users when the exact same
+PDF is uploaded. LALSTUDY uses the PDF SHA-256 hash as the cache key.
+
+Cached stages:
+- Core Analysis
+- Prerequisites
+- Experimental Strategy
+- Critical Reading
+- Individual Figure AI analyses
+
+The Supabase cache stores structured AI output and model metadata only.
+It does not store uploaded PDF bytes, extracted full paper text, or Figure images.
+
+Run `SUPABASE_PAPER_CACHE_MIGRATION.sql` once before using this feature.
+
+
+## v0.4.3 — Canonical Paper Identity
+
+Paper-level cache identity now follows:
+
+`DOI > PMCID > PMID > normalized title + year > exact PDF SHA-256`
+
+This means a publisher PDF and author manuscript can reuse the same paper-level
+analysis when they expose the same stable identifier.
+
+Individual Figure cache identity is intentionally stricter:
+`canonical paper key + Figure label + normalized Figure legend hash`.
+
+Supplementary documents are separated from main-article cache identities.
+
+Run `SUPABASE_CANONICAL_PAPER_CACHE_MIGRATION.sql` once before using v0.4.3.
