@@ -93,36 +93,45 @@ def parse_concept_input(raw: str) -> List[str]:
 def get_supabase_credentials(
     secrets=None,
 ) -> Tuple[str, str]:
+    """
+    Read server-side Supabase credentials robustly.
+
+    Streamlit's Secrets object is dict-like but behavior can differ by runtime,
+    so prefer explicit membership/index access before falling back to env vars.
+    """
     url = ""
     key = ""
 
     if secrets is not None:
         try:
-            url = str(
-                secrets.get(
-                    "SUPABASE_URL",
-                    "",
-                )
-            ).strip()
+            if "SUPABASE_URL" in secrets:
+                url = str(
+                    secrets[
+                        "SUPABASE_URL"
+                    ]
+                ).strip()
 
-            # 2026 recommended backend key.
-            key = str(
-                secrets.get(
-                    "SUPABASE_SECRET_KEY",
-                    "",
-                )
-            ).strip()
-
-            # Legacy compatibility only.
-            if not key:
+            if "SUPABASE_SECRET_KEY" in secrets:
                 key = str(
-                    secrets.get(
-                        "SUPABASE_SERVICE_ROLE_KEY",
-                        "",
-                    )
+                    secrets[
+                        "SUPABASE_SECRET_KEY"
+                    ]
+                ).strip()
+
+            # Legacy compatibility.
+            if (
+                not key
+                and "SUPABASE_SERVICE_ROLE_KEY"
+                in secrets
+            ):
+                key = str(
+                    secrets[
+                        "SUPABASE_SERVICE_ROLE_KEY"
+                    ]
                 ).strip()
 
         except Exception:
+            # Environment variables remain a valid fallback.
             pass
 
     if not url:
@@ -144,6 +153,109 @@ def get_supabase_credentials(
         ).strip()
 
     return url, key
+
+
+def safe_supabase_diagnostics(
+    *,
+    url: str,
+    secret_key: str,
+    client=None,
+) -> Dict:
+    """
+    Return non-sensitive connection diagnostics.
+
+    Never expose the actual secret key.
+    """
+    diagnostic = {
+        "url_present": bool(url),
+        "secret_present": bool(
+            secret_key
+        ),
+        "secret_type": (
+            "sb_secret"
+            if secret_key.startswith(
+                "sb_secret_"
+            )
+            else (
+                "legacy_service_role"
+                if secret_key.startswith(
+                    "eyJ"
+                )
+                else (
+                    "other"
+                    if secret_key
+                    else "missing"
+                )
+            )
+        ),
+        "client_library": (
+            "available"
+            if create_client
+            is not None
+            else "missing"
+        ),
+        "client_created": (
+            client is not None
+        ),
+        "db_ping": False,
+        "error": "",
+    }
+
+    if not url:
+        diagnostic[
+            "error"
+        ] = "SUPABASE_URL is missing."
+        return diagnostic
+
+    if not secret_key:
+        diagnostic[
+            "error"
+        ] = "SUPABASE_SECRET_KEY is missing."
+        return diagnostic
+
+    if create_client is None:
+        diagnostic[
+            "error"
+        ] = (
+            "The `supabase` Python package "
+            "is not installed."
+        )
+        return diagnostic
+
+    if client is None:
+        diagnostic[
+            "error"
+        ] = (
+            "Supabase client could not be created."
+        )
+        return diagnostic
+
+    try:
+        # Smallest practical table read; independent from row count.
+        response = (
+            client.client
+            .table(
+                "knowledge_concepts"
+            )
+            .select(
+                "id"
+            )
+            .limit(
+                1
+            )
+            .execute()
+        )
+
+        diagnostic[
+            "db_ping"
+        ] = response is not None
+
+    except Exception as exc:
+        diagnostic[
+            "error"
+        ] = str(exc)
+
+    return diagnostic
 
 
 class KnowledgeArchive:
@@ -637,23 +749,39 @@ class KnowledgeArchive:
 
         return concept_row
 
-    def count(self) -> int:
-        response = (
-            self.client
-            .table(
-                "knowledge_concepts"
+    def count(self) -> Optional[int]:
+        """
+        Count is informational only.
+        A count-query incompatibility must never mark the Archive disconnected.
+        """
+        try:
+            response = (
+                self.client
+                .table(
+                    "knowledge_concepts"
+                )
+                .select(
+                    "id",
+                    count="exact",
+                )
+                .limit(
+                    1
+                )
+                .execute()
             )
-            .select(
-                "id",
-                count="exact",
-            )
-            .limit(
-                1
-            )
-            .execute()
-        )
 
-        return int(
-            response.count
-            or 0
-        )
+            value = getattr(
+                response,
+                "count",
+                None,
+            )
+
+            if value is not None:
+                return int(
+                    value
+                )
+
+        except Exception:
+            pass
+
+        return None

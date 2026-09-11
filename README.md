@@ -2,7 +2,7 @@
 
 > Learn a paper, understand the experiment, and keep learning without losing context.
 
-**Current version: `v0.3.0-beta`**
+**Current version: `v0.3.0.1-beta`**
 
 LALSTUDY is an experimental scientific-paper learning platform that connects two workflows:
 
@@ -532,3 +532,21 @@ SUPABASE_SECRET_KEY = "sb_secret_..."
 ```
 
 The secret key must remain server-side.
+
+
+## v0.3.0.1 — Supabase connection diagnostics
+
+Archive connection health is now based only on a minimal
+`knowledge_concepts` table ping. Concept counting is informational and cannot
+mark a healthy connection as disconnected.
+
+When the Archive is disconnected, the sidebar exposes a safe diagnostic panel
+showing:
+
+- whether `SUPABASE_URL` exists
+- whether `SUPABASE_SECRET_KEY` exists
+- key type/prefix category (never the key itself)
+- whether the Python client library loaded
+- whether a client was created
+- whether the `knowledge_concepts` table ping succeeded
+- the exact Supabase error message

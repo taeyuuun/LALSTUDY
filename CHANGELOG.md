@@ -2,6 +2,20 @@
 
 All notable LALSTUDY updates will be recorded here.
 
+## [0.3.0.1-beta] - 2026-09-11
+
+### Fixed
+- Supabase row-count errors no longer mark a healthy Archive connection as disconnected
+- Streamlit Secrets access is more robust across runtimes
+- Archive DB ping is now independent from informational concept count
+
+### Diagnostics
+- Added safe Archive connection diagnostics to the sidebar
+- Shows presence of URL/key, key type, package status, client creation and DB/table ping
+- Displays the exact Supabase error while never revealing secret values
+
+All notable LALSTUDY updates will be recorded here.
+
 ## [0.3.0-beta] - 2026-09-11
 
 ### Knowledge Archive

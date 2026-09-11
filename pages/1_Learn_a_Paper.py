@@ -46,9 +46,10 @@ from knowledge_archive import (
     get_supabase_credentials,
     normalize_concept,
     parse_concept_input,
+    safe_supabase_diagnostics,
 )
 
-APP_VERSION = "v0.3.0-beta"
+APP_VERSION = "v0.3.0.1-beta"
 METHOD_PROFILE_FILE = Path("method_profiles.json")
 
 st.set_page_config(
@@ -600,24 +601,50 @@ archive_client = (
 
 archive_connected = False
 archive_count = None
+archive_connection_error = ""
 
-if archive_client:
+archive_diag = (
+    safe_supabase_diagnostics(
+        url=supabase_url,
+        secret_key=(
+            supabase_secret_key
+        ),
+        client=archive_client,
+    )
+)
+
+archive_connected = bool(
+    archive_diag.get(
+        "db_ping"
+    )
+)
+
+archive_connection_error = (
+    archive_diag.get(
+        "error",
+        "",
+    )
+)
+
+# Count is informational only.
+# A count failure must NOT turn a healthy DB connection into "disconnected".
+if archive_connected:
     try:
-        archive_connected = (
-            archive_client.ping()
+        archive_count = (
+            archive_client.count()
         )
-
-        if archive_connected:
-            archive_count = (
-                archive_client.count()
-            )
     except Exception:
-        archive_connected = False
+        archive_count = None
 
 if archive_connected:
-    st.sidebar.success(
-        f"🧠 Knowledge Archive · {archive_count or 0} concepts"
-    )
+    if archive_count is None:
+        st.sidebar.success(
+            "🧠 Knowledge Archive · connected"
+        )
+    else:
+        st.sidebar.success(
+            f"🧠 Knowledge Archive · {archive_count} concepts"
+        )
 else:
     st.sidebar.warning(
         L(
@@ -626,6 +653,72 @@ else:
             "🧠 Knowledge Archive not connected",
         )
     )
+
+    with st.sidebar.expander(
+        L(
+            lang,
+            "🔧 Archive 연결 진단",
+            "🔧 Archive connection diagnostics",
+        ),
+        expanded=True,
+    ):
+        st.write(
+            {
+                "SUPABASE_URL": (
+                    "✅"
+                    if archive_diag.get(
+                        "url_present"
+                    )
+                    else "❌"
+                ),
+                "SUPABASE_SECRET_KEY": (
+                    "✅"
+                    if archive_diag.get(
+                        "secret_present"
+                    )
+                    else "❌"
+                ),
+                "key type": (
+                    archive_diag.get(
+                        "secret_type",
+                        "unknown",
+                    )
+                ),
+                "supabase package": (
+                    archive_diag.get(
+                        "client_library",
+                        "unknown",
+                    )
+                ),
+                "client created": (
+                    "✅"
+                    if archive_diag.get(
+                        "client_created"
+                    )
+                    else "❌"
+                ),
+                "knowledge_concepts ping": (
+                    "✅"
+                    if archive_diag.get(
+                        "db_ping"
+                    )
+                    else "❌"
+                ),
+            }
+        )
+
+        if archive_connection_error:
+            st.code(
+                archive_connection_error
+            )
+
+        st.caption(
+            L(
+                lang,
+                "Secret의 실제 값은 진단 화면에 표시되지 않습니다.",
+                "Actual secret values are never shown in diagnostics.",
+            )
+        )
 
 st.sidebar.caption(
     "Text: "
@@ -2716,10 +2809,16 @@ else:
     st.warning(
         L(
             lang,
-            "Supabase가 아직 연결되지 않았습니다. 설명 생성은 가능하지만 다른 사용자와 영구적으로 공유되지 않습니다. `supabase_schema.sql` 실행 후 Streamlit Secrets에 SUPABASE_URL / SUPABASE_SECRET_KEY를 넣으세요.",
-            "Supabase is not connected yet. AI explanations can still be generated, but they will not be persistently shared across users. Run `supabase_schema.sql` and configure SUPABASE_URL / SUPABASE_SECRET_KEY.",
+            "Supabase가 아직 연결되지 않았습니다. 사이드바의 `Archive 연결 진단`을 열면 어느 단계에서 실패했는지 확인할 수 있습니다.",
+            "Supabase is not connected. Open `Archive connection diagnostics` in the sidebar to see the exact failing stage.",
         )
     )
+
+    if archive_connection_error:
+        st.caption(
+            "Supabase: "
+            + archive_connection_error
+        )
 
 concept_raw = st.text_area(
     L(
