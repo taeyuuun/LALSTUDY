@@ -707,3 +707,11 @@ The OpenAI Usage sidebar now uses a single-column compact layout so token counts
 ## v0.4.1.2 — Official-only Usage UI
 
 The sidebar no longer displays estimated complimentary-token balances. It always shows official organization usage/costs when available, and only shows complimentary remaining tokens when the OpenAI Usage API explicitly reports the data-sharing incentive service tier.
+
+
+## v0.4.1.3 — Compact Figure Workspace
+
+Learn a Paper now renders each Figure in a two-column workspace:
+the Figure stays compact on the left, while the source legend and Figure AI
+interpretation remain on the right. Long legends scroll independently so the
+analysis starts closer to the Figure.

@@ -46,7 +46,7 @@ from source_pdf_figure_extractor import (
     available as source_pdf_extractor_available,
 )
 
-APP_VERSION = "v0.4.1.2-beta"
+APP_VERSION = "v0.4.1.3-beta"
 METHOD_PROFILE_FILE = Path("method_profiles.json")
 
 st.set_page_config(
@@ -1623,8 +1623,8 @@ if core_record or extracted_study_figures:
         st.caption(
             L(
                 lang,
-                "논문 PDF에서 Figure 이미지와 바로 아래 원문 Figure legend를 한 묶음으로 가져옵니다. 이미지는 화면 폭에 맞춰 확대하지 않고 crop의 원래 크기로 표시합니다.",
-                "Each Figure is paired with its original source legend from the PDF. Images are displayed at their native crop size instead of being stretched to page width.",
+                "Figure는 왼쪽에 작게, 원문 legend와 AI 해석은 오른쪽에 배치합니다. Figure를 보면서 설명과 분석을 같은 화면에서 비교할 수 있습니다.",
+                "Figures are shown compactly on the left, with the original legend and AI interpretation on the right for side-by-side reading.",
             )
         )
 
@@ -1682,179 +1682,193 @@ if core_record or extracted_study_figures:
                     )
                 )
 
-                st.image(
-                    source_item.get(
-                        "image_path"
-                    ),
-                    caption=(
-                        f"{source_item.get('figure_label','Figure')} · "
-                        f"page {source_item.get('page_number','?')}"
-                    ),
-                    use_container_width=False,
+                figure_col, detail_col = st.columns(
+                    [0.90, 1.10],
+                    gap="large",
                 )
 
-                st.markdown(
-                    f"#### {L(lang,'원문 Figure legend','Original Figure legend')}"
-                )
-
-                st.write(
-                    source_item.get(
-                        "caption",
-                        "",
+                with figure_col:
+                    st.image(
+                        source_item.get(
+                            "image_path"
+                        ),
+                        caption=(
+                            f"{source_item.get('figure_label','Figure')} · "
+                            f"page {source_item.get('page_number','?')}"
+                        ),
+                        use_container_width=True,
                     )
-                )
 
-                button_label = (
-                    L(
-                        lang,
-                        "✨ 이 Figure 분석하기",
-                        "✨ Analyze this Figure",
+                with detail_col:
+                    st.markdown(
+                        f"#### {L(lang,'원문 Figure legend','Original Figure legend')}"
                     )
-                    if not figure_record
-                    else L(
-                        lang,
-                        "🔄 이 Figure 다시 분석하기",
-                        "🔄 Re-analyze this Figure",
-                    )
-                )
 
-                if st.button(
-                    button_label,
-                    key=(
-                        "lal_single_figure_ai_"
-                        + str(
+                    # Keep long legends from pushing the AI result far below the Figure.
+                    # Users can scroll the legend independently while keeping the Figure visible.
+                    with st.container(
+                        height=220,
+                        border=False,
+                    ):
+                        st.write(
                             source_item.get(
-                                "figure_key",
-                                source_item.get(
-                                    "figure_label",
-                                    "figure",
-                                ),
+                                "caption",
+                                "",
                             )
                         )
-                    ),
-                    type=(
-                        "primary"
-                        if not figure_record
-                        else "secondary"
-                    ),
-                    disabled=(
-                        not figure_openai_ready
-                    ),
-                ):
-                    with st.spinner(
+
+                    button_label = (
                         L(
                             lang,
-                            f"{source_item.get('figure_label','Figure')}만 분석 중...",
-                            f"Analyzing only {source_item.get('figure_label','Figure')}...",
+                            "✨ 이 Figure 분석하기",
+                            "✨ Analyze this Figure",
                         )
-                    ):
-                        try:
-                            image_path = Path(
+                        if not figure_record
+                        else L(
+                            lang,
+                            "🔄 이 Figure 다시 분석하기",
+                            "🔄 Re-analyze this Figure",
+                        )
+                    )
+
+                    if st.button(
+                        button_label,
+                        key=(
+                            "lal_single_figure_ai_"
+                            + str(
                                 source_item.get(
-                                    "image_path",
-                                    "",
+                                    "figure_key",
+                                    source_item.get(
+                                        "figure_label",
+                                        "figure",
+                                    ),
                                 )
                             )
-
-                            if not image_path.exists():
-                                raise FileNotFoundError(
-                                    f"Figure crop not found: {image_path}"
+                        ),
+                        type=(
+                            "primary"
+                            if not figure_record
+                            else "secondary"
+                        ),
+                        disabled=(
+                            not figure_openai_ready
+                        ),
+                        use_container_width=True,
+                    ):
+                        with st.spinner(
+                            L(
+                                lang,
+                                f"{source_item.get('figure_label','Figure')}만 분석 중...",
+                                f"Analyzing only {source_item.get('figure_label','Figure')}...",
+                            )
+                        ):
+                            try:
+                                image_path = Path(
+                                    source_item.get(
+                                        "image_path",
+                                        "",
+                                    )
                                 )
 
-                            suffix = image_path.suffix.lower()
-                            mime_type = {
-                                ".jpg": "image/jpeg",
-                                ".jpeg": "image/jpeg",
-                                ".webp": "image/webp",
-                            }.get(
-                                suffix,
-                                "image/png",
-                            )
+                                if not image_path.exists():
+                                    raise FileNotFoundError(
+                                        f"Figure crop not found: {image_path}"
+                                    )
 
-                            (
-                                result,
-                                model,
-                                provider,
-                                usage,
-                            ) = analyze_single_figure(
-                                figure_label=(
+                                suffix = image_path.suffix.lower()
+                                mime_type = {
+                                    ".jpg": "image/jpeg",
+                                    ".jpeg": "image/jpeg",
+                                    ".webp": "image/webp",
+                                }.get(
+                                    suffix,
+                                    "image/png",
+                                )
+
+                                (
+                                    result,
+                                    model,
+                                    provider,
+                                    usage,
+                                ) = analyze_single_figure(
+                                    figure_label=(
+                                        source_item.get(
+                                            "figure_label",
+                                            "Figure",
+                                        )
+                                    ),
+                                    image_bytes=(
+                                        image_path.read_bytes()
+                                    ),
+                                    image_mime_type=mime_type,
+                                    legend=(
+                                        source_item.get(
+                                            "caption",
+                                            "",
+                                        )
+                                    ),
+                                    core_bundle=(
+                                        core_record[
+                                            "data"
+                                        ]
+                                        if core_record
+                                        else {}
+                                    ),
+                                    api_key=(
+                                        openai_api_key
+                                    ),
+                                )
+
+                                set_single_figure_stage(
+                                    source_item,
+                                    depth,
+                                    result,
+                                    model,
+                                    provider,
+                                    usage,
+                                )
+
+                                st.rerun()
+
+                            except Exception as exc:
+                                show_stage_error(
                                     source_item.get(
                                         "figure_label",
                                         "Figure",
-                                    )
-                                ),
-                                image_bytes=(
-                                    image_path.read_bytes()
-                                ),
-                                image_mime_type=mime_type,
-                                legend=(
-                                    source_item.get(
-                                        "caption",
-                                        "",
-                                    )
-                                ),
-                                core_bundle=(
-                                    core_record[
-                                        "data"
-                                    ]
-                                    if core_record
-                                    else {}
-                                ),
-                                api_key=(
-                                    openai_api_key
-                                ),
-                                                            )
+                                    ),
+                                    exc,
+                                )
 
-                            set_single_figure_stage(
-                                source_item,
-                                depth,
-                                result,
-                                model,
-                                provider,
-                                usage,
-                            )
-
-                            st.rerun()
-
-                        except Exception as exc:
-                            show_stage_error(
-                                source_item.get(
-                                    "figure_label",
-                                    "Figure",
-                                ),
-                                exc,
-                            )
-
-                if figure_record:
-                    st.divider()
-                    model_badge(
-                        figure_record
-                    )
-
-                    usage = figure_record.get(
-                        "usage"
-                    ) or {}
-
-                    if usage.get(
-                        "total_tokens"
-                    ):
-                        st.caption(
-                            "Tokens: "
-                            f"{usage.get('input_tokens','?')} in + "
-                            f"{usage.get('output_tokens','?')} out = "
-                            f"{usage.get('total_tokens','?')} total"
-                        )
-
-                    figure_ai_data = (
-                        selected_language_data(
+                    if figure_record:
+                        st.divider()
+                        model_badge(
                             figure_record
                         )
-                        or {}
-                    )
 
-                    render_ai_figure_analysis(
-                        figure_ai_data
-                    )
+                        usage = figure_record.get(
+                            "usage"
+                        ) or {}
+
+                        if usage.get(
+                            "total_tokens"
+                        ):
+                            st.caption(
+                                "Tokens: "
+                                f"{usage.get('input_tokens','?')} in + "
+                                f"{usage.get('output_tokens','?')} out = "
+                                f"{usage.get('total_tokens','?')} total"
+                            )
+
+                        figure_ai_data = (
+                            selected_language_data(
+                                figure_record
+                            )
+                            or {}
+                        )
+
+                        render_ai_figure_analysis(
+                            figure_ai_data
+                        )
 
         with st.expander(
             L(

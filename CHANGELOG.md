@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.1.3-beta] - 2026-09-12
+
+### Figure workspace
+- Reduced Figure display width by moving it into a compact left column
+- Moved the original Figure legend to a right-side column
+- Long legends now use an independent scroll area
+- Figure AI analysis appears directly below the legend, enabling side-by-side comparison with the Figure
+
 ## [0.4.1.2-beta] - 2026-09-12
 
 ### OpenAI Usage UI
