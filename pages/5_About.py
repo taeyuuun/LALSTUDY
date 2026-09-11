@@ -1,9 +1,9 @@
 import streamlit as st
 from i18n import language_selector, L
 from knowledge_widget import render_knowledge_archive_widget
-from ai_provider import render_openai_usage_panel
+from openai_sidebar import render_openai_usage_panel
 
-APP_VERSION = "v0.4.1.1-beta"
+APP_VERSION = "v0.4.1.2-beta"
 st.set_page_config(page_title="LALSTUDY · About",page_icon="ℹ️",layout="wide")
 lang=language_selector()
 
@@ -32,6 +32,20 @@ st.caption(L(lang,
     "세부 hotfix를 모두 나열하기보다 사용자 경험이 크게 바뀐 milestone만 정리합니다.",
     "This timeline highlights major user-facing milestones rather than every hotfix."
 ))
+
+with st.container(border=True):
+    st.subheader("v0.4.1.2-beta · Official-only Usage UI")
+    st.markdown(L(lang,"""
+- 무료 token **추정 잔량 표시를 제거**하고 공식값만 표시
+- official incentive service tier가 확인될 때만 무료 사용량/잔량 표시
+- sidebar 숫자를 단일-column 작은 글씨로 고정해 ellipsis 문제 제거
+- stale UI 확인을 위한 `usage UI · v0.4.1.2` 표시 추가
+""","""
+- Removed estimated complimentary-token balances; the UI now shows official values only
+- Complimentary usage/remaining appears only when the official incentive service tier is confirmed
+- Forced the sidebar into a compact single-column text layout to eliminate ellipsis
+- Added a `usage UI · v0.4.1.2` deployment marker
+"""))
 
 with st.container(border=True):
     st.subheader("v0.4.1.1-beta · Compact Usage UI")

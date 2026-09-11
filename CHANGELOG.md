@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.1.2-beta] - 2026-09-12
+
+### OpenAI Usage UI
+- Removed all estimated complimentary-token remaining balances
+- Shows complimentary remaining tokens only when the official data-sharing incentive service tier is present
+- Replaced the previous renderer with a new `openai_sidebar.py` module to prevent stale layout reuse
+- Added an explicit `usage UI · v0.4.1.2` deployment marker
+- Uses a single-column compact text layout with no `st.metric()` cards
+
 ## [0.4.1.1-beta] - 2026-09-12
 
 ### Sidebar hotfix

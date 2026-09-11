@@ -13,7 +13,7 @@ from pypdf import PdfReader
 
 from i18n import language_selector, L
 from knowledge_widget import render_knowledge_archive_widget
-from ai_provider import render_openai_usage_panel
+from openai_sidebar import render_openai_usage_panel
 from ai_router import (
     analyze_core,
     analyze_prerequisites,
@@ -46,7 +46,7 @@ from source_pdf_figure_extractor import (
     available as source_pdf_extractor_available,
 )
 
-APP_VERSION = "v0.4.1.1-beta"
+APP_VERSION = "v0.4.1.2-beta"
 METHOD_PROFILE_FILE = Path("method_profiles.json")
 
 st.set_page_config(

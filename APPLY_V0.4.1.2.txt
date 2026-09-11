@@ -1,0 +1,23 @@
+LALSTUDY v0.4.1.2-beta
+
+1) Extract this ZIP.
+2) Copy ALL files inside the extracted folder into:
+   C:\immune_methods_mvp\LALSTUDY_v0.1.0-beta
+   and overwrite existing files.
+
+3) Confirm this NEW file exists in the project root:
+   openai_sidebar.py
+
+4) Optional local cache cleanup:
+   Remove-Item -Recurse -Force __pycache__ -ErrorAction SilentlyContinue
+   Get-ChildItem -Recurse -Directory -Filter __pycache__ | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+
+5) Commit/push:
+   git add .
+   git commit -m "Show official-only OpenAI usage in compact sidebar"
+   git push
+
+6) After Streamlit redeploys, the bottom of the OpenAI Usage box MUST say:
+   usage UI · v0.4.1.2
+
+If that marker is absent, the deployed commit is not using this patch.

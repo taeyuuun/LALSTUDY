@@ -10,7 +10,7 @@ import re
 import html
 from i18n import language_selector, L
 from knowledge_widget import render_knowledge_archive_widget
-from ai_provider import render_openai_usage_panel
+from openai_sidebar import render_openai_usage_panel
 
 DATA_FILE = Path("method_profiles.json")
 IMAGE_INDEX_FILE = Path("figure_images.json")

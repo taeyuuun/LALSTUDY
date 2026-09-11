@@ -2,7 +2,7 @@
 
 > Learn a paper, understand the experiment, and keep learning without losing context.
 
-**Current version: `v0.4.1.1-beta`**
+**Current version: `v0.4.1.2-beta`**
 
 ## v0.4.0 — OpenAI-only architecture
 
@@ -702,3 +702,8 @@ See `OPENAI_USAGE_SETUP.md`.
 ## v0.4.1.1 — Compact Usage UI
 
 The OpenAI Usage sidebar now uses a single-column compact layout so token counts no longer truncate on narrow sidebars.
+
+
+## v0.4.1.2 — Official-only Usage UI
+
+The sidebar no longer displays estimated complimentary-token balances. It always shows official organization usage/costs when available, and only shows complimentary remaining tokens when the OpenAI Usage API explicitly reports the data-sharing incentive service tier.
