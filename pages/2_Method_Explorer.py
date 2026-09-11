@@ -13,7 +13,8 @@ from ai_provider import (
     get_openai_api_key,
     openai_ready,
 )
-from method_wiki_ai import (
+from method_wiki_ai_v2 import (
+    build_method_db_payload,
     generate_method_encyclopedia_entry,
 )
 from i18n import language_selector, L
@@ -30,7 +31,7 @@ from method_wiki import (
 from openai_sidebar import render_openai_usage_panel
 
 
-APP_VERSION = "v0.5.1-beta"
+APP_VERSION = "v0.5.1.1-beta"
 
 DATA_FILE = Path("method_profiles.json")
 IMAGE_INDEX_FILE = Path("figure_images.json")
@@ -1875,61 +1876,12 @@ if db_entry:
                             )
                         )
 
-                        generated = (
-                            result.model_dump()
+                        payload = build_method_db_payload(
+                            result,
+                            canonical_name=selected_method,
+                            facets=facets,
+                            model=model,
                         )
-
-                        article_json = {
-                            key: generated[
-                                key
-                            ]
-                            for key in [
-                                "key_question_ko",
-                                "key_question_en",
-                                "one_liner_ko",
-                                "one_liner_en",
-                                "principle_steps_ko",
-                                "principle_steps_en",
-                                "best_for_points_ko",
-                                "best_for_points_en",
-                                "limitation_points_ko",
-                                "limitation_points_en",
-                                "interpretation_tip_ko",
-                                "interpretation_tip_en",
-                            ]
-                        }
-
-                        payload = {
-                            "canonical_name": selected_method,
-                            "summary_ko": generated[
-                                "summary_ko"
-                            ],
-                            "summary_en": generated[
-                                "summary_en"
-                            ],
-                            "principle_ko": generated[
-                                "principle_ko"
-                            ],
-                            "principle_en": generated[
-                                "principle_en"
-                            ],
-                            "best_for_ko": generated[
-                                "best_for_ko"
-                            ],
-                            "best_for_en": generated[
-                                "best_for_en"
-                            ],
-                            "limitations_ko": generated[
-                                "limitations_ko"
-                            ],
-                            "limitations_en": generated[
-                                "limitations_en"
-                            ],
-                            "article_json": article_json,
-                            "facets": facets,
-                            "quality_status": "AI_GENERATED",
-                            "source_model": model,
-                        }
 
                         method_wiki_store.upsert(
                             payload
@@ -1946,9 +1898,22 @@ if db_entry:
                         st.rerun()
 
                     except Exception as exc:
-                        st.error(
-                            str(exc)
-                        )
+                        error_text = str(exc)
+
+                        if "article_json" in error_text:
+                            st.error(
+                                L(
+                                    lang,
+                                    "Supabase의 `article_json` 컬럼이 아직 없습니다. "
+                                    "`SUPABASE_METHOD_WIKI_READABILITY_MIGRATION.sql`을 한 번 실행한 뒤 다시 눌러주세요.",
+                                    "The Supabase `article_json` column is missing. "
+                                    "Run `SUPABASE_METHOD_WIKI_READABILITY_MIGRATION.sql` once, then retry.",
+                                )
+                            )
+                        else:
+                            st.error(
+                                error_text
+                            )
 
 else:
     st.info(
@@ -2049,61 +2014,12 @@ else:
                     )
                 )
 
-                generated = (
-                    result.model_dump()
+                payload = build_method_db_payload(
+                    result,
+                    canonical_name=selected_method,
+                    facets=facets,
+                    model=model,
                 )
-
-                article_json = {
-                    key: generated[
-                        key
-                    ]
-                    for key in [
-                        "key_question_ko",
-                        "key_question_en",
-                        "one_liner_ko",
-                        "one_liner_en",
-                        "principle_steps_ko",
-                        "principle_steps_en",
-                        "best_for_points_ko",
-                        "best_for_points_en",
-                        "limitation_points_ko",
-                        "limitation_points_en",
-                        "interpretation_tip_ko",
-                        "interpretation_tip_en",
-                    ]
-                }
-
-                payload = {
-                    "canonical_name": selected_method,
-                    "summary_ko": generated[
-                        "summary_ko"
-                    ],
-                    "summary_en": generated[
-                        "summary_en"
-                    ],
-                    "principle_ko": generated[
-                        "principle_ko"
-                    ],
-                    "principle_en": generated[
-                        "principle_en"
-                    ],
-                    "best_for_ko": generated[
-                        "best_for_ko"
-                    ],
-                    "best_for_en": generated[
-                        "best_for_en"
-                    ],
-                    "limitations_ko": generated[
-                        "limitations_ko"
-                    ],
-                    "limitations_en": generated[
-                        "limitations_en"
-                    ],
-                    "article_json": article_json,
-                    "facets": facets,
-                    "quality_status": "AI_GENERATED",
-                    "source_model": model,
-                }
 
                 method_wiki_store.upsert(
                     payload
@@ -2120,9 +2036,22 @@ else:
                 st.rerun()
 
             except Exception as exc:
-                st.error(
-                    str(exc)
-                )
+                error_text = str(exc)
+
+                if "article_json" in error_text:
+                    st.error(
+                        L(
+                            lang,
+                            "Supabase의 `article_json` 컬럼이 아직 없습니다. "
+                            "`SUPABASE_METHOD_WIKI_READABILITY_MIGRATION.sql`을 한 번 실행한 뒤 다시 눌러주세요.",
+                            "The Supabase `article_json` column is missing. "
+                            "Run `SUPABASE_METHOD_WIKI_READABILITY_MIGRATION.sql` once, then retry.",
+                        )
+                    )
+                else:
+                    st.error(
+                        error_text
+                    )
 
 
 # ============================================================

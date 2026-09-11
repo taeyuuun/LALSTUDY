@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.5.1.1-beta] - 2026-09-12
+
+### Method Wiki schema hotfix
+- Fixed `KeyError: 'key_question_ko'` during method readability upgrade
+- Added defensive `method_wiki_ai_v2.py`
+- Normalizes partial/legacy AI outputs into complete structured `article_json`
+- Removed fragile direct indexing of optional readability fields
+- Added explicit `article_json` migration guidance
+
 ## [0.5.1-beta] - 2026-09-12
 
 ### Method Wiki readability
