@@ -1,173 +1,310 @@
 import streamlit as st
+
 from i18n import language_selector, L
 from knowledge_widget import render_knowledge_archive_widget
-from openai_sidebar import render_openai_usage_panel
 
-APP_VERSION = "v0.5.4-beta"
-st.set_page_config(page_title="LALSTUDY · About",page_icon="ℹ️",layout="wide")
-lang=language_selector()
 
-render_openai_usage_panel(lang=lang)
+APP_VERSION = "v0.6.0-open-beta"
 
-render_knowledge_archive_widget(lang=lang)
 
-st.title(L(lang,"ℹ️ LALSTUDY 소개","ℹ️ About LALSTUDY"))
-st.caption(L(lang,f"현재 버전: {APP_VERSION}",f"Current version: {APP_VERSION}"))
+st.set_page_config(
+    page_title="LALSTUDY · About",
+    page_icon="ℹ️",
+    layout="wide",
+)
 
-if lang=="ko":
-    st.markdown("""
-**LALSTUDY**는 논문을 읽는 과정에서 논리, 배경개념, 실험기법, Figure를 하나의 학습 맥락으로 연결하기 위한 실험적 플랫폼입니다.
+lang = language_selector()
 
-현재 corpus 기반 기능은 면역학 관련 키워드 검색으로 수집한 약 1,000개의 **Nature Communications open-access 논문**을 사용합니다. 이는 전체 면역학 문헌이나 *Nature Immunology* corpus가 아닙니다.
-    """)
-else:
-    st.markdown("""
-**LALSTUDY** is an experimental platform designed to connect paper logic, background concepts, experimental methods, and figures within one learning context.
+render_knowledge_archive_widget(
+    lang=lang
+)
 
-The current corpus-based features use approximately 1,000 **Nature Communications open-access papers retrieved with immunology-related search terms**. This is neither a complete immunology corpus nor a *Nature Immunology* corpus.
-    """)
 
-st.header(L(lang,"주요 패치노트","Major Patch Notes"))
-st.caption(L(lang,
-    "세부 hotfix를 모두 나열하기보다 사용자 경험이 크게 바뀐 milestone만 정리합니다.",
-    "This timeline highlights major user-facing milestones rather than every hotfix."
-))
+st.markdown(
+    """
+    <style>
+    .block-container {
+        max-width: 1040px;
+        padding-top: 2.4rem;
+        padding-bottom: 4rem;
+    }
 
-with st.container(border=True):
-    st.subheader("v0.4.1.2-beta · Official-only Usage UI")
-    st.markdown(L(lang,"""
-- 무료 token **추정 잔량 표시를 제거**하고 공식값만 표시
-- official incentive service tier가 확인될 때만 무료 사용량/잔량 표시
-- sidebar 숫자를 단일-column 작은 글씨로 고정해 ellipsis 문제 제거
-- stale UI 확인을 위한 `usage UI · v0.4.1.2` 표시 추가
-""","""
-- Removed estimated complimentary-token balances; the UI now shows official values only
-- Complimentary usage/remaining appears only when the official incentive service tier is confirmed
-- Forced the sidebar into a compact single-column text layout to eliminate ellipsis
-- Added a `usage UI · v0.4.1.2` deployment marker
-"""))
+    .about-badge {
+        display:inline-block;
+        padding:.32rem .68rem;
+        border-radius:999px;
+        border:1px solid rgba(49,51,63,.14);
+        font-size:.76rem;
+        font-weight:800;
+        letter-spacing:.07em;
+        margin-bottom:.8rem;
+    }
 
-with st.container(border=True):
-    st.subheader("v0.4.1.1-beta · Compact Usage UI")
-    st.markdown(L(lang,"""
-- sidebar의 3열 metric / 큰 숫자 UI를 완전히 제거
-- 무료 잔량, 오늘 사용량, 요청 수, 비용을 세로형 compact layout으로 정리
-- 긴 service-tier 안내문을 한 줄 상태 메시지로 축약
-""","""
-- Removed narrow 3-column metrics and oversized number rendering
-- Reworked usage / remaining / requests / cost into a compact vertical layout
-- Shortened the service-tier explanation into a one-line status note
-"""))
+    .about-lead {
+        font-size:1.08rem;
+        line-height:1.75;
+        max-width:820px;
+        opacity:.78;
+        margin-bottom:1.2rem;
+    }
 
-with st.container(border=True):
-    st.subheader("v0.4.1-beta · Usage UI")
-    st.markdown(L(lang,"""
-- OpenAI Usage 숫자가 sidebar에서 잘리지 않도록 UI 재설계
-- 공식 usage와 무료 잔량 **추정치**를 명확히 구분
-- 사용량 / 일일 한도 / 요청 수 / 실제 과금액을 한눈에 표시
-""","""
-- Redesigned the OpenAI Usage sidebar so large numbers are never truncated
-- Clearly distinguishes official usage from an **estimated** complimentary balance
-- Shows usage / daily allowance / request count / billed cost at a glance
-"""))
+    .about-card {
+        border:1px solid rgba(49,51,63,.12);
+        border-radius:16px;
+        padding:1rem 1.05rem;
+        min-height:145px;
+        background:rgba(255,255,255,.75);
+    }
 
-with st.container(border=True):
-    st.subheader("v0.4.0-beta · OpenAI Only")
-    st.markdown(L(lang,"""
-- Gemini runtime 제거, 모든 AI 기능을 OpenAI로 단일화
-- Core / Plus / Figure / Knowledge Archive AI를 하나의 engine으로 통합
-- OpenAI Organization Usage / Costs 공식 sync 추가
-""","""
-- Removed the Gemini runtime and unified all AI features under OpenAI
-- Core / Plus / Figure / Knowledge Archive now share one AI engine
-- Added official OpenAI Organization Usage / Costs sync
-"""))
+    .about-card-title {
+        font-weight:800;
+        margin-bottom:.45rem;
+    }
 
-with st.container(border=True):
-    st.subheader("v0.3.x · Knowledge Archive & Learn UX")
-    st.markdown(L(lang,"""
-- Supabase 기반 재사용형 Knowledge Archive 구축
-- Archive를 전역 sidebar로 이동하고 용어를 하나씩 queue에 추가하도록 개선
-- Learn a Paper를 **Main(Core + Figures) / Plus** 계층으로 단순화
-- Figure별 독립 AI 분석 구조 도입
-""","""
-- Added a reusable Supabase-backed Knowledge Archive
-- Moved Archive to a global sidebar with one-concept-at-a-time queueing
-- Simplified Learn a Paper into **Main (Core + Figures) / Plus** layers
-- Introduced independent per-Figure AI analysis
-"""))
+    .about-card-copy {
+        opacity:.72;
+        line-height:1.6;
+        font-size:.93rem;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
-with st.container(border=True):
-    st.subheader("v0.2.x · AI Deep Study & Figure Extraction")
-    st.markdown(L(lang,"""
-- Core / 선수지식 / 실험전략 / Figure / 비판적 읽기 AI 모듈 구축
-- AI 호출을 stage별로 분리해 실패 격리 및 cache 적용
-- 원본 PDF caption-anchor 기반 Figure crop engine 정착
-- Figure 이미지 + 원문 legend를 함께 학습하는 흐름 구축
-""","""
-- Added Core / prerequisites / experimental strategy / Figure / critical-reading AI modules
-- Split AI calls into stages for failure isolation and caching
-- Stabilized source-PDF caption-anchor Figure extraction
-- Paired Figure images with their original source legends
-"""))
 
-with st.container(border=True):
-    st.subheader("v0.1.x · Integrated Beta")
-    st.markdown(L(lang,"""
-- Learn a Paper / Method Explorer / Figure Explorer / Panel Crop 통합
-- 한국어 / English 전역 UI 지원
-- 약 1,000편 OA 논문 기반 Method ↔ Paper ↔ Figure 탐색
-""","""
-- Integrated Learn a Paper / Method Explorer / Figure Explorer / Panel Crop
-- Added global Korean / English UI
-- Enabled Method ↔ Paper ↔ Figure exploration over ~1,000 OA papers
-"""))
+st.markdown(
+    '<div class="about-badge">OPEN BETA</div>',
+    unsafe_allow_html=True,
+)
 
-st.header(L(lang,"로드맵","Roadmap"))
-st.markdown(L(lang,"""
-### 현재 개발 방향
-- OpenAI 기반 AI 설명 레이어 고도화
-- Question → Gap → Hypothesis → Experiment → Result → Conclusion 구조화
-- Concept dependency graph
-- Learn a Paper ↔ Method/Figure Explorer 직접 연결
-- 복합 과학 검색
+st.title(
+    L(
+        lang,
+        "LALSTUDY 소개",
+        "About LALSTUDY",
+    )
+)
 
-### 이후
-- 개인 지식 프로필
-- 학습 기록
-- 사용자 correction / QA
-- 여러 논문 비교
-""","""
-### Current development direction
-- Improve the OpenAI-powered explanation layer
-- Question → Gap → Hypothesis → Experiment → Result → Conclusion reconstruction
-- Concept dependency graph
-- Direct Learn a Paper ↔ Method/Figure Explorer linking
-- Compound scientific search
+st.markdown(
+    (
+        '<div class="about-lead">'
+        + L(
+            lang,
+            "LALSTUDY는 과학 논문을 단순히 요약하는 대신, "
+            "연구의 핵심 논리·Figure·배경개념·실험기법을 서로 연결해 "
+            "다음 질문으로 자연스럽게 이어지도록 만든 학습 플랫폼입니다.",
+            "LALSTUDY is a scientific-learning platform built to connect "
+            "a paper's core logic, Figures, prerequisite concepts, and experimental methods—"
+            "so reading naturally leads to the next useful question.",
+        )
+        + "</div>"
+    ),
+    unsafe_allow_html=True,
+)
 
-### Later
-- Personal knowledge profile
-- Learning history
-- User correction / QA
-- Multi-paper comparison
-"""))
 
-st.header(L(lang,"베타 한계","Beta limitations"))
-st.markdown(L(lang,"""
-- 자동 method detection에는 false positive가 있을 수 있습니다.
-- Figure ↔ Method 연결은 Paper ↔ Method보다 덜 완전합니다.
-- Panel parsing/cropping은 heuristic입니다.
-- Learn a Paper는 아직 extractive / rule-based 중심입니다.
-- PDF text layer가 필요합니다.
-- 권리 분류는 보수적 자동 보조 도구이며 법률 자문이 아닙니다.
-""","""
-- Automated method detection can produce false positives.
-- Figure ↔ Method coverage is less complete than Paper ↔ Method coverage.
-- Panel parsing and cropping are heuristic.
-- Learn a Paper is still primarily extractive / rule-based.
-- PDF parsing requires an accessible text layer.
-- Rights classification is a conservative automated aid, not legal advice.
-"""))
+st.header(
+    L(
+        lang,
+        "Open Beta에서 제공하는 것",
+        "What is available in Open Beta",
+    )
+)
+
+items = [
+    (
+        "📄",
+        L(lang, "Learn a Paper", "Learn a Paper"),
+        L(
+            lang,
+            "PDF를 업로드해 Core Analysis, 원문 Figure/legend, 선수지식, 실험전략, 비판적 읽기를 단계적으로 확인합니다.",
+            "Upload a PDF and move through Core Analysis, original Figures/legends, prerequisites, experimental strategy, and critical reading.",
+        ),
+    ),
+    (
+        "🖼️",
+        L(lang, "Figure 이해", "Figure understanding"),
+        L(
+            lang,
+            "각 Figure를 독립적으로 해석해 무엇을 측정했고 무엇을 보여주는지, 무엇까지는 말할 수 없는지 확인합니다.",
+            "Analyze Figures independently to see what was measured, what the result supports, and what it does not establish.",
+        ),
+    ),
+    (
+        "🧬",
+        L(lang, "Method Wiki", "Method Wiki"),
+        L(
+            lang,
+            "실험기법을 검색하거나 category로 탐색하고 실제 논문·Figure·panel에서 어떻게 쓰였는지 연결해서 봅니다.",
+            "Search or browse experimental methods and connect them to how they are used in real papers, Figures, and panels.",
+        ),
+    ),
+    (
+        "🧠",
+        L(lang, "Knowledge Archive", "Knowledge Archive"),
+        L(
+            lang,
+            "한 번 찾아본 개념 설명을 재사용 가능한 지식으로 저장해 다른 논문을 읽을 때 다시 활용합니다.",
+            "Save concept explanations as reusable knowledge and bring them back when reading other papers.",
+        ),
+    ),
+]
+
+cols = st.columns(2)
+
+for i, (
+    icon,
+    title,
+    copy,
+) in enumerate(
+    items
+):
+    with cols[
+        i % 2
+    ]:
+        st.markdown(
+            f"""
+            <div class="about-card">
+              <div class="about-card-title">{icon} {title}</div>
+              <div class="about-card-copy">{copy}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.write("")
+
+
+st.header(
+    L(
+        lang,
+        "Corpus 범위",
+        "Corpus scope",
+    )
+)
+
+st.markdown(
+    L(
+        lang,
+        """
+현재 corpus 기반 기능은 면역학 관련 키워드 검색으로 수집한 약 **1,000편의 Nature Communications open-access 논문**을 사용합니다.
+
+따라서 Method Wiki의 논문 수나 사용 빈도는 **이 corpus 안에서의 관찰값**이며,
+전체 면역학 문헌의 실제 빈도를 의미하지 않습니다.
+""",
+        """
+Corpus-based features currently use approximately **1,000 Nature Communications open-access papers retrieved with immunology-related search terms**.
+
+Method counts and usage frequencies therefore describe this corpus only; they are not prevalence estimates for the full immunology literature.
+""",
+    )
+)
+
+
+st.header(
+    L(
+        lang,
+        "데이터와 AI",
+        "Data and AI",
+    )
+)
+
+st.markdown(
+    L(
+        lang,
+        """
+- AI 분석은 OpenAI 기반으로 동작합니다.
+- 동일 논문의 재분석 비용과 대기 시간을 줄이기 위해 구조화된 분석 결과를 재사용할 수 있습니다.
+- 공유 분석 cache에는 업로드한 **PDF 원문 자체나 Figure image bytes를 저장하지 않도록 설계**했습니다.
+- Figure crop은 업로드된 PDF에서 필요할 때 생성합니다.
+- Method Wiki의 설명은 재사용 가능한 method-level 지식으로 저장됩니다.
+""",
+        """
+- AI analysis is powered by OpenAI.
+- Structured analysis results can be reused to reduce repeated waiting time and duplicate model calls for the same paper.
+- The shared analysis cache is designed **not to store uploaded PDF bytes or Figure image bytes**.
+- Figure crops are generated from the uploaded PDF when needed.
+- Method Wiki descriptions are stored as reusable method-level knowledge.
+""",
+    )
+)
+
+
+st.header(
+    L(
+        lang,
+        "Open Beta에서 알아둘 점",
+        "Open Beta notes",
+    )
+)
+
+st.markdown(
+    L(
+        lang,
+        """
+- 자동 method detection과 Figure/panel 연결에는 일부 false positive 또는 누락이 있을 수 있습니다.
+- 논문 PDF의 text layer와 문서 구조에 따라 추출 품질이 달라질 수 있습니다.
+- Figure별 AI 해석은 학습 보조이며 원문 결과와 legend를 함께 확인하는 것이 좋습니다.
+- corpus와 Method Wiki는 계속 확장·교정될 수 있습니다.
+""",
+        """
+- Automated method detection and Figure/panel linking can occasionally contain false positives or omissions.
+- Extraction quality can vary with the PDF text layer and document structure.
+- Per-Figure AI interpretation is a learning aid; read it together with the original result and legend.
+- The corpus and Method Wiki may continue to expand and be corrected during Open Beta.
+""",
+    )
+)
+
+
+st.header(
+    L(
+        lang,
+        "주요 변화",
+        "Major milestones",
+    )
+)
+
+st.markdown(
+    L(
+        lang,
+        """
+**Open Beta · v0.6**  
+사용자용 화면을 정리하고 핵심 기능을 `Learn a Paper`와 `Method Wiki`에 집중했습니다.
+
+**v0.5 · Method Wiki**  
+실험기법 검색, category 탐색, Method → Paper → Figure → Panel 연결을 도입했습니다.
+
+**v0.4 · Persistent learning**  
+공유 paper-analysis cache, Knowledge Archive, OpenAI-only AI 분석 구조를 도입했습니다.
+
+**v0.2–0.3 · Deep paper learning**  
+Figure 추출과 Figure별 AI 분석, 선수지식·실험전략·비판적 읽기 흐름을 구축했습니다.
+""",
+        """
+**Open Beta · v0.6**  
+Simplified the public product around two core experiences: `Learn a Paper` and `Method Wiki`.
+
+**v0.5 · Method Wiki**  
+Added method search, category browsing, and Method → Paper → Figure → Panel connections.
+
+**v0.4 · Persistent learning**  
+Added reusable paper-analysis caching, Knowledge Archive, and an OpenAI-only AI architecture.
+
+**v0.2–0.3 · Deep paper learning**  
+Built Figure extraction, per-Figure AI analysis, prerequisites, experimental strategy, and critical-reading flows.
+""",
+    )
+)
+
 
 st.divider()
-st.page_link("app.py",label=L(lang,"← 홈","← Home"),icon="🏠")
+
+st.page_link(
+    "app.py",
+    label=L(
+        lang,
+        "← 홈으로",
+        "← Back home",
+    ),
+    icon="🏠",
+)

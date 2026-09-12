@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.6.0-open-beta] - 2026-09-12
+
+### Open Beta
+- Promoted LALSTUDY from internal beta-style UI to Open Beta
+- Removed public Figure Explorer and Panel Crop Beta pages
+- Renamed Method Explorer to Method Wiki in public navigation
+- Rebuilt the landing page around Learn a Paper + Method Wiki
+- Removed developer-facing pipeline/debug copy from the home and About pages
+- Simplified About into product scope, corpus scope, data/AI notes, limitations, and milestone history
+- Learn a Paper now routes method examples directly into Method Wiki
+
 ## [0.5.4-beta] - 2026-09-12
 
 ### Panel-level Method Map

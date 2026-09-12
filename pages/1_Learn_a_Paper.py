@@ -52,7 +52,7 @@ from source_pdf_figure_extractor import (
     available as source_pdf_extractor_available,
 )
 
-APP_VERSION = "v0.4.4.2-beta"
+APP_VERSION = "v0.6.0-open-beta"
 METHOD_PROFILE_FILE = Path("method_profiles.json")
 
 st.set_page_config(
@@ -790,7 +790,6 @@ def show_stage_error(
 def method_jump_button(
     method_name,
     key,
-    target="method",
 ):
     canonical = canonical_method_match(
         method_name
@@ -803,8 +802,8 @@ def method_jump_button(
         f"🧬 {canonical} "
         + L(
             lang,
-            "사례 보기",
-            "examples",
+            "Method Wiki에서 보기",
+            "in Method Wiki",
         )
     )
 
@@ -817,14 +816,9 @@ def method_jump_button(
             "lal_method_jump"
         ] = canonical
 
-        if target == "figure":
-            st.switch_page(
-                "pages/3_Figure_Explorer.py"
-            )
-        else:
-            st.switch_page(
-                "pages/2_Method_Explorer.py"
-            )
+        st.switch_page(
+            "pages/2_Method_Wiki.py"
+        )
 
 
 def logic_arrow():
@@ -841,7 +835,7 @@ def logic_arrow():
 lang = language_selector()
 
 st.sidebar.title("LALSTUDY")
-st.sidebar.caption(APP_VERSION)
+st.sidebar.caption("OPEN BETA")
 
 depth_options = {
     L(
@@ -900,24 +894,6 @@ openai_api_key = get_openai_api_key()
 openai_ok = openai_ready()
 
 st.sidebar.caption("Active AI: OpenAI")
-st.sidebar.caption(
-    "Text: " + " → ".join(get_text_models())
-)
-st.sidebar.caption(
-    "Figure: " + " → ".join(get_figure_models())
-)
-
-
-if paper_analysis_cache_ready:
-    st.sidebar.caption(
-        "☁️ Canonical paper cache · connected"
-    )
-else:
-    st.sidebar.caption(
-        "☁️ Canonical paper cache · migration needed"
-    )
-
-
 st.caption(
     L(
         lang,
@@ -3054,31 +3030,12 @@ if core_record:
                     )
 
                     if canonical:
-                        b1, b2 = (
-                            st.columns(2)
+                        method_jump_button(
+                            canonical,
+                            key=(
+                                f"plus_method_{idx}"
+                            ),
                         )
-
-                        with b1:
-                            method_jump_button(
-                                canonical,
-                                key=(
-                                    f"plus_method_{idx}"
-                                ),
-                                target=(
-                                    "method"
-                                ),
-                            )
-
-                        with b2:
-                            method_jump_button(
-                                canonical,
-                                key=(
-                                    f"plus_figure_{idx}"
-                                ),
-                                target=(
-                                    "figure"
-                                ),
-                            )
 
     # --------------------------------------------------------
     # CRITICAL READING PLUS

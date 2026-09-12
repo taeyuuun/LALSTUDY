@@ -2,7 +2,7 @@
 
 > Learn a paper, understand the experiment, and keep learning without losing context.
 
-**Current version: `v0.4.1.2-beta`**
+**Current version: `v0.6.0-open-beta`**
 
 ## v0.4.0 — OpenAI-only architecture
 
@@ -26,7 +26,7 @@ OPENAI_COMPLIMENTARY_DAILY_TOKENS = "2500000"
 LALSTUDY is an experimental scientific-paper learning platform that connects two workflows:
 
 1. **Learn a Paper** — turn a PDF into a structured learning path.
-2. **Explore Experiments** — move from experimental methods to real papers, figures, and panels.
+2. **Method Wiki** — move from experimental methods to real papers, figures, and panels.
 
 ## Why LALSTUDY?
 
@@ -56,22 +56,11 @@ LALSTUDY is designed around those links.
 - Figure-by-Figure Story
 - Recommended next learning steps
 
-### 🧬 Method Explorer
+### 🧬 Method Wiki
 - Canonical experimental-method ontology
 - Alias / parent / subtype relationships
 - Paper ↔ Method links
 - Related Figure captions
-
-### 🖼 Figure Explorer
-- Figure Gallery
-- Method-linked real examples
-- Panel-aware caption parsing
-- Study-oriented Figure interpretation
-
-### ✂️ Panel Crop Beta
-- Caption-based A/B/C/D detection
-- Whitespace/layout-based automatic crop candidates
-- Regular-grid fallback
 
 ### ⚖️ License-aware display
 - Article-level Creative Commons metadata
@@ -123,9 +112,7 @@ LALSTUDY/
 ├─ app.py
 ├─ pages/
 │  ├─ 1_Learn_a_Paper.py
-│  ├─ 2_Method_Explorer.py
-│  ├─ 3_Figure_Explorer.py
-│  ├─ 4_Panel_Crop_Beta.py
+│  ├─ 2_Method_Wiki.py
 │  └─ 5_About.py
 ├─ data/
 │  └─ README.md
