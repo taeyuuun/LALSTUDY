@@ -3,6 +3,8 @@ from typing import Dict, List
 
 import streamlit as st
 
+from terminology import apply_terminology
+
 from help_center import help_button
 
 from ai_router import explain_concepts_batch
@@ -174,6 +176,13 @@ def _display_concept(
     source_label: str,
     compact: bool = False,
 ):
+    # Same terminology preference used by Learn a Paper and Method Wiki.
+    # This is display-only; the shared Archive record is not rewritten.
+    data = apply_terminology(
+        data,
+        lang=lang,
+    )
+
     canonical = (
         data.get(
             "canonical_name"

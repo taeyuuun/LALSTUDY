@@ -309,6 +309,11 @@ Return both Korean and English for:
 - interpretation_tip
 
 Keep sentences short.
+For Korean fields, write natural Korean prose but preserve conventional
+life-science terms and assay names in English (for example Flow cytometry,
+apoptosis, phosphorylation, RNA sequencing). Do not permanently bake a
+user-specific Korean parenthetical style into the database; LALSTUDY applies
+that preference at presentation time.
 Do not include paper-specific findings, kit names, concentrations, timings,
 or step-by-step protocols.
 """

@@ -18,6 +18,7 @@ from method_wiki_ai_v2 import (
     generate_method_encyclopedia_entry,
 )
 from i18n import language_selector, L
+from terminology import apply_terminology, apply_terminology_text
 from help_center import help_button
 from knowledge_archive import get_supabase_credentials
 from sidebar_ui import render_public_sidebar
@@ -34,7 +35,7 @@ from method_taxonomy_v2 import (
 )
 
 
-APP_VERSION = "v0.6.4-open-beta"
+APP_VERSION = "v0.6.4.1-open-beta"
 
 DATA_FILE = Path("method_profiles.json")
 IMAGE_INDEX_FILE = Path("figure_images.json")
@@ -1014,7 +1015,7 @@ def structured_method_article(
             "Separate what the assay directly measures from the biological interpretation inferred from it."
         )
 
-    return {
+    article = {
         "key_question": key_question,
         "one_liner": summary,
         "principle_steps": sentence_points(
@@ -1031,6 +1032,12 @@ def structured_method_article(
         ),
         "interpretation_tip": interpretation_tip,
     }
+
+    # One presentation layer for both stored legacy entries and new entries.
+    return apply_terminology(
+        article,
+        lang=lang,
+    )
 
 
 
@@ -1439,7 +1446,12 @@ facets = (
 )
 
 
-st.title(selected_method)
+st.title(
+    apply_terminology_text(
+        selected_method,
+        lang=lang,
+    )
+)
 
 alias_text = ", ".join(
     profile.get(

@@ -12,6 +12,7 @@ import streamlit as st
 from pypdf import PdfReader
 
 from i18n import language_selector, L
+from terminology import apply_terminology
 from help_center import help_button
 from sidebar_ui import render_public_sidebar
 from knowledge_archive import get_supabase_credentials
@@ -52,7 +53,7 @@ from source_pdf_figure_extractor import (
     available as source_pdf_extractor_available,
 )
 
-APP_VERSION = "v0.6.4-open-beta"
+APP_VERSION = "v0.6.4.1-open-beta"
 METHOD_PROFILE_FILE = Path("method_profiles.json")
 
 st.set_page_config(
@@ -704,9 +705,17 @@ def selected_language_data(
         isinstance(data, dict)
         and lang in data
     ):
-        return data[lang]
+        selected = data[lang]
+    else:
+        selected = data
 
-    return data
+    # Presentation-only transformation.
+    # Cached scientific content stays unchanged, so switching terminology
+    # style never duplicates or invalidates paper analysis cache entries.
+    return apply_terminology(
+        selected,
+        lang=lang,
+    )
 
 
 def difficulty_label(value):
@@ -868,12 +877,6 @@ depth_label = st.sidebar.selectbox(
 depth = depth_options[
     depth_label
 ]
-
-if lang == "ko":
-    st.sidebar.caption(
-        "🧬 Korean prose + English scientific terminology"
-    )
-
 
 # ============================================================
 # ACTIVE PAPER
