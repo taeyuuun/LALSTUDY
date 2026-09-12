@@ -169,19 +169,7 @@ def render_openai_usage_panel(*, lang: str = "ko") -> None:
                             "🟢 Official complimentary-token usage confirmed",
                         )
                     )
-                else:
-                    st.caption(
-                        _L(
-                            lang,
-                            "ⓘ OpenAI 공식 usage sync 완료 · 무료 잔량은 eligible-model usage 기준 추정치",
-                            "ⓘ Official OpenAI usage synced · free balance is estimated from eligible-model usage",
-                        )
-                    )
-
-                synced = official.get("synced_at_utc")
-                if synced:
-                    st.caption(f"sync · {synced} UTC")
-
+               
                 if st.button(
                     _L(lang, "↻ 공식 usage 새로고침", "↻ Refresh official usage"),
                     key="lal_refresh_openai_official_usage",
