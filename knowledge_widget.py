@@ -1,6 +1,9 @@
+import os
 from typing import Dict, List
 
 import streamlit as st
+
+from help_center import help_button
 
 from ai_router import explain_concepts_batch
 from ai_provider import (
@@ -340,6 +343,13 @@ def render_knowledge_archive_widget(
             ),
             expanded=expanded,
         ):
+            help_button(
+                "archive",
+                lang=lang,
+                key="lal_help_archive_sidebar",
+                use_container_width=True,
+            )
+
             if not compact:
                 st.caption(
                     _L(

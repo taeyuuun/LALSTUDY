@@ -18,6 +18,7 @@ from method_wiki_ai_v2 import (
     generate_method_encyclopedia_entry,
 )
 from i18n import language_selector, L
+from help_center import help_button
 from knowledge_archive import get_supabase_credentials
 from sidebar_ui import render_public_sidebar
 from method_wiki import (
@@ -33,7 +34,7 @@ from method_taxonomy_v2 import (
 )
 
 
-APP_VERSION = "v0.6.2-open-beta"
+APP_VERSION = "v0.6.4-open-beta"
 
 DATA_FILE = Path("method_profiles.json")
 IMAGE_INDEX_FILE = Path("figure_images.json")
@@ -1082,13 +1083,26 @@ if (
 # ============================================================
 
 if not selected_method:
-    st.title(
-        L(
-            lang,
-            "🧬 Method Wiki",
-            "🧬 Method Wiki",
-        )
+    title_col, help_col = st.columns(
+        [0.82, 0.18]
     )
+
+    with title_col:
+        st.title(
+            L(
+                lang,
+                "🧬 Method Wiki",
+                "🧬 Method Wiki",
+            )
+        )
+
+    with help_col:
+        help_button(
+            "method",
+            lang=lang,
+            key="lal_help_method_page",
+            use_container_width=True,
+        )
 
     st.caption(
         L(

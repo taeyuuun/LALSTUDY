@@ -10,7 +10,7 @@ from i18n import language_selector
 from sidebar_ui import render_public_sidebar
 
 
-APP_VERSION = "v0.6.3-open-beta"
+APP_VERSION = "v0.6.4-open-beta"
 
 
 st.set_page_config(

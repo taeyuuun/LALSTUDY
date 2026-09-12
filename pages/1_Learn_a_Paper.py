@@ -12,6 +12,7 @@ import streamlit as st
 from pypdf import PdfReader
 
 from i18n import language_selector, L
+from help_center import help_button
 from sidebar_ui import render_public_sidebar
 from knowledge_archive import get_supabase_credentials
 from paper_analysis_cache import PaperAnalysisCache
@@ -51,7 +52,7 @@ from source_pdf_figure_extractor import (
     available as source_pdf_extractor_available,
 )
 
-APP_VERSION = "v0.6.2-open-beta"
+APP_VERSION = "v0.6.4-open-beta"
 METHOD_PROFILE_FILE = Path("method_profiles.json")
 
 st.set_page_config(
@@ -878,9 +879,22 @@ if lang == "ko":
 # ACTIVE PAPER
 # ============================================================
 
-st.title(
-    "📄 Learn a Paper"
+title_col, help_col = st.columns(
+    [0.82, 0.18]
 )
+
+with title_col:
+    st.title(
+        "📄 Learn a Paper"
+    )
+
+with help_col:
+    help_button(
+        "learn",
+        lang=lang,
+        key="lal_help_learn_page",
+        use_container_width=True,
+    )
 
 render_public_sidebar(
     lang=lang,
