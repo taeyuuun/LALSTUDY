@@ -21,17 +21,20 @@ from i18n import language_selector, L
 from knowledge_archive import get_supabase_credentials
 from knowledge_widget import render_knowledge_archive_widget
 from method_wiki import (
-    FACET_DEFINITIONS,
     MethodWikiStore,
+    normalize_method_name,
+)
+from method_taxonomy_v2 import (
+    FACET_DEFINITIONS,
     facet_label,
     facet_title,
     infer_facets,
-    normalize_method_name,
+    merged_facets,
 )
 from openai_sidebar import render_openai_usage_panel
 
 
-APP_VERSION = "v0.5.2-beta"
+APP_VERSION = "v0.5.2.1-beta"
 
 DATA_FILE = Path("method_profiles.json")
 IMAGE_INDEX_FILE = Path("figure_images.json")
@@ -410,53 +413,6 @@ def rank_method_matches(query):
         for _score, _sort, name
         in scored
     ]
-
-
-def merged_facets(
-    profile,
-    db_entry=None,
-):
-    local = infer_facets(
-        profile
-    )
-
-    if not db_entry:
-        return local
-
-    db_facets = (
-        db_entry.get(
-            "facets",
-            {},
-        )
-        or {}
-    )
-
-    output = {}
-
-    for facet in (
-        "purpose",
-        "material",
-        "principle",
-        "output",
-    ):
-        values = db_facets.get(
-            facet
-        )
-
-        output[facet] = (
-            values
-            if isinstance(
-                values,
-                list,
-            )
-            and values
-            else local.get(
-                facet,
-                [],
-            )
-        )
-
-    return output
 
 
 def method_button(
@@ -1266,11 +1222,23 @@ if not selected_method:
     for idx, facet in enumerate(
         facet_order
     ):
-        values = (
-            FACET_DEFINITIONS[
-                facet
-            ]["values"]
+        facet_spec = (
+            FACET_DEFINITIONS.get(
+                facet,
+                {}
+            )
         )
+
+        values = (
+            facet_spec.get(
+                "values",
+                {}
+            )
+        )
+
+        if not values:
+            # Defensive compatibility guard for mixed-version deployments.
+            continue
 
         available = [
             key

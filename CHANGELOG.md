@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.5.2.1-beta] - 2026-09-12
+
+### Taxonomy import hotfix
+- Fixed `KeyError` at `FACET_DEFINITIONS[facet]`
+- Moved V2 taxonomy to standalone `method_taxonomy_v2.py`
+- Method Explorer no longer relies on `method_wiki.py` being the exact same deployment version
+- Added defensive `.get()` lookup for facet specifications
+- No SQL, secret, or dependency changes
+
 ## [0.5.2-beta] - 2026-09-12
 
 ### Method Taxonomy V2
