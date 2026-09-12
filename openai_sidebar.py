@@ -72,10 +72,10 @@ def render_openai_usage_panel(*, lang: str = "ko") -> None:
                 # Compact text-only layout: no st.metric, no columns, no giant digits.
                 st.markdown(
                     f"""
-<div style="font-size:0.92rem; line-height:1.55;">
+<div style="font-size:0.92rem; line-height:1.25;">
   <div style="opacity:0.72;">{_L(lang, '오늘 공식 사용량', 'Official usage today')}</div>
   <div><strong>{total_tokens:,} tokens</strong></div>
-  <div style="margin-top:0.35rem; opacity:0.82;">
+  <div style="margin-top:0.10rem; opacity:0.82;">
     {_L(lang, '요청', 'Requests')} {total_requests:,}
     {(' · ' + _L(lang, '오늘 과금', 'Cost today') + ' $' + format(float(cost), '.4f')) if cost is not None else ''}
   </div>
@@ -102,7 +102,7 @@ def render_openai_usage_panel(*, lang: str = "ko") -> None:
                     if remaining is not None:
                         st.markdown(
                             f"""
-<div style="font-size:0.92rem; line-height:1.55;">
+<div style="font-size:0.92rem; line-height:1.25;">
   <div>{_L(lang, '사용', 'Used')} <strong>{used:,}</strong> tokens</div>
   <div>{_L(lang, '잔여', 'Remaining')} <strong>{int(remaining):,}</strong> tokens</div>
 </div>
@@ -112,7 +112,20 @@ def render_openai_usage_panel(*, lang: str = "ko") -> None:
 
                     if budget > 0:
                         st.progress(min(max(used / budget, 0.0), 1.0))
-               
+                else:
+                    # Deliberately omit any estimated complimentary balance.
+                    st.caption(
+                        _L(
+                            lang,
+                            "🟢 공식 Usage sync 완료",
+                            "🟢 Official Usage sync complete",
+                        )
+                    )
+
+                synced = official.get("synced_at_utc")
+                if synced:
+                    st.caption(f"sync · {synced} UTC")
+
                 if st.button(
                     _L(lang, "↻ 공식 usage 새로고침", "↻ Refresh official usage"),
                     key="lal_refresh_openai_official_usage_v0412",
@@ -145,3 +158,5 @@ def render_openai_usage_panel(*, lang: str = "ko") -> None:
                     with st.expander(_L(lang, "오류 보기", "View error"), expanded=False):
                         st.code(str(official.get("error", "Unknown error")))
 
+            # Visible deployment marker so stale UI is obvious immediately.
+            st.caption("usage UI · v0.4.1.2")
