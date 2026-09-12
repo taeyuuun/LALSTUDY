@@ -19,7 +19,7 @@ from method_wiki_ai_v2 import (
 )
 from i18n import language_selector, L
 from knowledge_archive import get_supabase_credentials
-from knowledge_widget import render_knowledge_archive_widget
+from sidebar_ui import render_public_sidebar
 from method_wiki import (
     MethodWikiStore,
     normalize_method_name,
@@ -31,10 +31,9 @@ from method_taxonomy_v2 import (
     infer_facets,
     merged_facets,
 )
-from openai_sidebar import render_openai_usage_panel
 
 
-APP_VERSION = "v0.6.0-open-beta"
+APP_VERSION = "v0.6.2-open-beta"
 
 DATA_FILE = Path("method_profiles.json")
 IMAGE_INDEX_FILE = Path("figure_images.json")
@@ -1040,16 +1039,8 @@ def structured_method_article(
 
 lang = language_selector()
 
-render_openai_usage_panel(
+render_public_sidebar(
     lang=lang
-)
-
-render_knowledge_archive_widget(
-    lang=lang
-)
-
-st.sidebar.caption(
-    "METHOD WIKI · OPEN BETA"
 )
 
 

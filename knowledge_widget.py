@@ -170,6 +170,7 @@ def _display_concept(
     data: Dict,
     lang: str,
     source_label: str,
+    compact: bool = False,
 ):
     canonical = (
         data.get(
@@ -182,9 +183,10 @@ def _display_concept(
         f"**{canonical}**"
     )
 
-    st.caption(
-        source_label
-    )
+    if not compact:
+        st.caption(
+            source_label
+        )
 
     if lang == "ko":
         definition = data.get(
@@ -279,7 +281,7 @@ def _display_concept(
         "quality_status"
     )
 
-    if quality:
+    if quality and not compact:
         st.caption(
             f"Archive quality: {quality}"
         )
@@ -290,6 +292,9 @@ def render_knowledge_archive_widget(
     lang: str = "ko",
     depth: str = "undergraduate",
     paper_context: str = "",
+    compact: bool = False,
+    expanded: bool = True,
+    show_divider: bool = True,
 ):
     """
     Global left-sidebar Knowledge Archive.
@@ -325,7 +330,8 @@ def render_knowledge_archive_widget(
     )
 
     with st.sidebar:
-        st.divider()
+        if show_divider:
+            st.divider()
 
         with st.expander(
             (
@@ -333,15 +339,16 @@ def render_knowledge_archive_widget(
                 if connected
                 else "🧠 Knowledge Archive ⚠"
             ),
-            expanded=True,
+            expanded=expanded,
         ):
-            st.caption(
-                _L(
-                    lang,
-                    "모르는 scientific term/phrase를 하나씩 추가하세요. 띄어쓰기가 포함된 표현도 하나의 용어로 유지됩니다.",
-                    "Add unfamiliar scientific terms/phrases one at a time. Multi-word phrases stay as one concept.",
+            if not compact:
+                st.caption(
+                    _L(
+                        lang,
+                        "모르는 scientific term/phrase를 하나씩 추가하세요. 띄어쓰기가 포함된 표현도 하나의 용어로 유지됩니다.",
+                        "Add unfamiliar scientific terms/phrases one at a time. Multi-word phrases stay as one concept.",
+                    )
                 )
-            )
 
             # ------------------------------------------------
             # ONE TERM / PHRASE INPUT
@@ -477,13 +484,14 @@ def render_knowledge_archive_widget(
             else:
                 search_clicked = False
 
-                st.caption(
-                    _L(
-                        lang,
-                        "예: `apoptotic stress` 전체를 한 번에 추가하면 하나의 concept으로 검색됩니다.",
-                        "Example: adding `apoptotic stress` keeps the full phrase as one concept.",
+                if not compact:
+                    st.caption(
+                        _L(
+                            lang,
+                            "예: `apoptotic stress` 전체를 한 번에 추가하면 하나의 concept으로 검색됩니다.",
+                            "Example: adding `apoptotic stress` keeps the full phrase as one concept.",
+                        )
                     )
-                )
 
             # ------------------------------------------------
             # CONNECTION DIAGNOSTICS
@@ -497,55 +505,44 @@ def render_knowledge_archive_widget(
                     )
                 )
 
-                with st.expander(
-                    _L(
-                        lang,
-                        "연결 진단",
-                        "Connection diagnostics",
-                    ),
-                    expanded=False,
-                ):
-                    st.write(
-                        {
-                            "SUPABASE_URL": (
-                                "✅"
-                                if diag.get(
-                                    "url_present"
-                                )
-                                else "❌"
-                            ),
-                            "SUPABASE_SECRET_KEY": (
-                                "✅"
-                                if diag.get(
-                                    "secret_present"
-                                )
-                                else "❌"
-                            ),
-                            "client": (
-                                "✅"
-                                if diag.get(
-                                    "client_created"
-                                )
-                                else "❌"
-                            ),
-                            "DB ping": (
-                                "✅"
-                                if diag.get(
-                                    "db_ping"
-                                )
-                                else "❌"
-                            ),
-                        }
-                    )
-
-                    if diag.get(
-                        "error"
+                if not compact:
+                    with st.expander(
+                        _L(
+                            lang,
+                            "연결 진단",
+                            "Connection diagnostics",
+                        ),
+                        expanded=False,
                     ):
-                        st.code(
-                            diag[
-                                "error"
-                            ]
+                        st.write(
+                            {
+                                "SUPABASE_URL": (
+                                    "✅"
+                                    if diag.get("url_present")
+                                    else "❌"
+                                ),
+                                "SUPABASE_SECRET_KEY": (
+                                    "✅"
+                                    if diag.get("secret_present")
+                                    else "❌"
+                                ),
+                                "client": (
+                                    "✅"
+                                    if diag.get("client_created")
+                                    else "❌"
+                                ),
+                                "DB ping": (
+                                    "✅"
+                                    if diag.get("db_ping")
+                                    else "❌"
+                                ),
+                            }
                         )
+
+                        if diag.get("error"):
+                            st.code(
+                                diag["error"]
+                            )
 
                 return
 
@@ -683,6 +680,7 @@ def render_knowledge_archive_widget(
                     source_label=(
                         "⚡ Archive HIT"
                     ),
+                    compact=compact,
                 )
 
                 st.divider()
@@ -720,13 +718,14 @@ def render_knowledge_archive_widget(
                     )
                 )
 
-                st.caption(
-                    _L(
-                        lang,
-                        "이 버튼을 눌렀을 때만 OpenAI request 1회가 발생합니다.",
-                        "OpenAI is called once only when this button is clicked.",
+                if not compact:
+                    st.caption(
+                        _L(
+                            lang,
+                            "이 버튼을 눌렀을 때만 OpenAI request 1회가 발생합니다.",
+                            "OpenAI is called once only when this button is clicked.",
+                        )
                     )
-                )
 
                 if generate_clicked:
                     with st.spinner(

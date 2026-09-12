@@ -662,6 +662,139 @@ def _edit_design(
     return design
 
 
+
+def _edit_sidebar(
+    draft,
+):
+    sidebar = copy.deepcopy(
+        draft.get(
+            "sidebar",
+            {},
+        )
+    )
+
+    with st.expander(
+        "🧭 사이드바",
+        expanded=True,
+    ):
+        st.caption(
+            "공개 페이지의 공통 사이드바입니다."
+        )
+
+        c1, c2 = st.columns(2)
+
+        with c1:
+            sidebar[
+                "show_knowledge_archive"
+            ] = st.toggle(
+                "Knowledge Archive 표시",
+                value=bool(
+                    sidebar.get(
+                        "show_knowledge_archive",
+                        True,
+                    )
+                ),
+                key=WIDGET_PREFIX
+                + "sidebar_show_knowledge",
+            )
+
+            sidebar[
+                "knowledge_expanded"
+            ] = st.toggle(
+                "Knowledge Archive 펼치기",
+                value=bool(
+                    sidebar.get(
+                        "knowledge_expanded",
+                        True,
+                    )
+                ),
+                key=WIDGET_PREFIX
+                + "sidebar_knowledge_expanded",
+            )
+
+        with c2:
+            sidebar[
+                "show_openai_usage"
+            ] = st.toggle(
+                "OpenAI Usage 표시",
+                value=bool(
+                    sidebar.get(
+                        "show_openai_usage",
+                        True,
+                    )
+                ),
+                key=WIDGET_PREFIX
+                + "sidebar_show_openai",
+            )
+
+            sidebar[
+                "openai_expanded"
+            ] = st.toggle(
+                "OpenAI Usage 펼치기",
+                value=bool(
+                    sidebar.get(
+                        "openai_expanded",
+                        False,
+                    )
+                ),
+                key=WIDGET_PREFIX
+                + "sidebar_openai_expanded",
+            )
+
+        sidebar[
+            "order"
+        ] = st.segmented_control(
+            "순서",
+            options=[
+                "knowledge_first",
+                "openai_first",
+            ],
+            format_func=lambda value: (
+                "Knowledge → OpenAI"
+                if value
+                == "knowledge_first"
+                else "OpenAI → Knowledge"
+            ),
+            default=str(
+                sidebar.get(
+                    "order",
+                    "knowledge_first",
+                )
+            ),
+            key=WIDGET_PREFIX
+            + "sidebar_order",
+        ) or "knowledge_first"
+
+        sidebar[
+            "openai_detail"
+        ] = st.segmented_control(
+            "OpenAI Usage 표시",
+            options=[
+                "minimal",
+                "compact",
+            ],
+            format_func=lambda value: (
+                "최소"
+                if value == "minimal"
+                else "조금 자세히"
+            ),
+            default=str(
+                sidebar.get(
+                    "openai_detail",
+                    "minimal",
+                )
+            ),
+            key=WIDGET_PREFIX
+            + "sidebar_openai_detail",
+        ) or "minimal"
+
+        st.caption(
+            "기본값은 Knowledge Archive를 위에 두고 OpenAI는 접힌 최소 표시입니다."
+        )
+
+    return sidebar
+
+
 def render_home_editor(
     *,
     lang,
@@ -780,6 +913,12 @@ def render_home_editor(
         draft[
             "design"
         ] = _edit_design(
+            draft
+        )
+
+        draft[
+            "sidebar"
+        ] = _edit_sidebar(
             draft
         )
 

@@ -12,14 +12,13 @@ import streamlit as st
 from pypdf import PdfReader
 
 from i18n import language_selector, L
-from knowledge_widget import render_knowledge_archive_widget
+from sidebar_ui import render_public_sidebar
 from knowledge_archive import get_supabase_credentials
 from paper_analysis_cache import PaperAnalysisCache
 from paper_identity import (
     identify_paper,
     figure_cache_stage,
 )
-from openai_sidebar import render_openai_usage_panel
 from ai_router import (
     analyze_core,
     analyze_prerequisites,
@@ -52,7 +51,7 @@ from source_pdf_figure_extractor import (
     available as source_pdf_extractor_available,
 )
 
-APP_VERSION = "v0.6.0-open-beta"
+APP_VERSION = "v0.6.2-open-beta"
 METHOD_PROFILE_FILE = Path("method_profiles.json")
 
 st.set_page_config(
@@ -883,17 +882,13 @@ st.title(
     "📄 Learn a Paper"
 )
 
-render_openai_usage_panel(lang=lang)
-
-render_knowledge_archive_widget(
+render_public_sidebar(
     lang=lang,
     depth=depth,
 )
 
 openai_api_key = get_openai_api_key()
 openai_ok = openai_ready()
-
-st.sidebar.caption("Active AI: OpenAI")
 st.caption(
     L(
         lang,

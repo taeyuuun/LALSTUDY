@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.6.2-open-beta] - 2026-09-12
+
+### Sidebar Studio
+- Knowledge Archive now appears above OpenAI Usage by default
+- OpenAI Usage is collapsed and reduced to a compact official usage summary
+- Removed public developer copy such as `Active AI: OpenAI`, sync markers, and UI version markers
+- Added shared `sidebar_ui.py` so Home / Learn a Paper / Method Wiki / About use one sidebar implementation
+- Added sidebar visibility, order, expansion, and OpenAI-detail controls to Home Studio
+- No SQL, dependency, or new secret changes
+
 ## [0.6.1-open-beta] - 2026-09-12
 
 ### Home Studio

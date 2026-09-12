@@ -1,10 +1,10 @@
 import streamlit as st
 
 from i18n import language_selector, L
-from knowledge_widget import render_knowledge_archive_widget
+from sidebar_ui import render_public_sidebar
 
 
-APP_VERSION = "v0.6.1-open-beta"
+APP_VERSION = "v0.6.2-open-beta"
 
 
 st.set_page_config(
@@ -15,7 +15,7 @@ st.set_page_config(
 
 lang = language_selector()
 
-render_knowledge_archive_widget(
+render_public_sidebar(
     lang=lang
 )
 

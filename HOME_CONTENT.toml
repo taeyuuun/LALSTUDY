@@ -24,6 +24,18 @@ page_max_width_px = 1180
 card_radius_px = 18
 card_min_height_px = 158
 
+[sidebar]
+# Home Studio에서 바꿀 수 있습니다.
+show_knowledge_archive = true
+knowledge_expanded = true
+
+show_openai_usage = true
+openai_expanded = false
+openai_detail = "minimal"
+
+# "knowledge_first" | "openai_first"
+order = "knowledge_first"
+
 [ko]
 hero_title = "논문을 읽고,\nFigure를 이해하고,\n실험기법까지 연결하세요."
 hero_subtitle = "LALSTUDY는 논문 요약에서 끝나지 않습니다. 연구의 핵심 논리, Figure, 배경개념과 실제 실험기법을 하나의 학습 흐름으로 연결합니다."
