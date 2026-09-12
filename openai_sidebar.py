@@ -71,7 +71,9 @@ def render_openai_usage_panel(
             title,
             expanded=expanded,
         ):
-            if not ready:
+            if ready:
+                st.success("OpenAI READY")
+            else:
                 st.error(
                     _L(
                         lang,
@@ -106,45 +108,14 @@ def render_openai_usage_panel(
                     else ""
                 )
 
-                # IMPORTANT:
-                # READY + usage are intentionally rendered in ONE HTML block.
-                # Streamlit adds vertical spacing between separate st.success /
-                # st.markdown blocks, so changing line-height alone cannot remove
-                # that gap.
                 st.markdown(
                     f"""
-<div class="lal-openai-compact" style="margin:0; padding:0;">
-  <div style="
-      margin:0 0 0.35rem 0;
-      padding:0.45rem 0.65rem;
-      border-radius:0.55rem;
-      background:rgba(33, 195, 84, 0.12);
-      color:rgb(0, 135, 63);
-      font-size:0.92rem;
-      line-height:1.2;
-  ">
-    OpenAI READY
-  </div>
-  <div style="margin:0; padding:0; font-size:0.92rem; line-height:1.20;">
-    <div style="margin:0;"><strong>{total_tokens:,} tokens</strong></div>
-    <div style="margin:0.05rem 0 0 0; opacity:0.82;">
-      {_L(lang, '요청', 'Requests')} {total_requests:,}{cost_text}
-    </div>
+<div style="font-size:0.92rem; line-height:1.20; margin:0; padding:0;">
+  <div><strong>{total_tokens:,} tokens</strong></div>
+  <div style="margin-top:0.05rem; opacity:0.82;">
+    {_L(lang, '요청', 'Requests')} {total_requests:,}{cost_text}
   </div>
 </div>
-<style>
-/* Tighten only the OpenAI expander that contains our marker. */
-section[data-testid="stSidebar"]
-div[data-testid="stExpander"]:has(.lal-openai-compact)
-div[data-testid="stVerticalBlock"] {{
-    gap: 0.38rem !important;
-}}
-section[data-testid="stSidebar"]
-div[data-testid="stExpander"]:has(.lal-openai-compact)
-div[data-testid="stButton"] {{
-    margin-top: -0.10rem !important;
-}}
-</style>
 """,
                     unsafe_allow_html=True,
                 )
@@ -192,29 +163,11 @@ div[data-testid="stButton"] {{
                     )
                     st.rerun()
 
-            else:
-                st.markdown(
-                    """
-<div style="
-    margin:0;
-    padding:0.45rem 0.65rem;
-    border-radius:0.55rem;
-    background:rgba(33, 195, 84, 0.12);
-    color:rgb(0, 135, 63);
-    font-size:0.92rem;
-    line-height:1.2;
-">
-  OpenAI READY
-</div>
-""",
-                    unsafe_allow_html=True,
-                )
-
-                if detail == "compact":
-                    st.caption(
-                        _L(
-                            lang,
-                            "공식 사용량을 불러올 수 없습니다.",
-                            "Official usage is unavailable.",
-                        )
+            elif detail == "compact":
+                st.caption(
+                    _L(
+                        lang,
+                        "공식 사용량을 불러올 수 없습니다.",
+                        "Official usage is unavailable.",
                     )
+                )
