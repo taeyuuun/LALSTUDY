@@ -112,20 +112,7 @@ def render_openai_usage_panel(*, lang: str = "ko") -> None:
 
                     if budget > 0:
                         st.progress(min(max(used / budget, 0.0), 1.0))
-                else:
-                    # Deliberately omit any estimated complimentary balance.
-                    st.caption(
-                        _L(
-                            lang,
-                            "🟢 공식 Usage sync 완료",
-                            "🟢 Official Usage sync complete",
-                        )
-                    )
-
-                synced = official.get("synced_at_utc")
-                if synced:
-                    st.caption(f"sync · {synced} UTC")
-
+               
                 if st.button(
                     _L(lang, "↻ 공식 usage 새로고침", "↻ Refresh official usage"),
                     key="lal_refresh_openai_official_usage_v0412",
@@ -158,5 +145,3 @@ def render_openai_usage_panel(*, lang: str = "ko") -> None:
                     with st.expander(_L(lang, "오류 보기", "View error"), expanded=False):
                         st.code(str(official.get("error", "Unknown error")))
 
-            # Visible deployment marker so stale UI is obvious immediately.
-            st.caption("usage UI · v0.4.1.2")
