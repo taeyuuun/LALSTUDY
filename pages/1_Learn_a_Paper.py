@@ -53,7 +53,7 @@ from source_pdf_figure_extractor import (
     available as source_pdf_extractor_available,
 )
 
-APP_VERSION = "v0.6.4.1-open-beta"
+APP_VERSION = "v0.6.4.3-open-beta"
 METHOD_PROFILE_FILE = Path("method_profiles.json")
 
 st.set_page_config(
@@ -280,7 +280,7 @@ def get_study_figures(file_bytes, paper_hash):
 
 
 @st.cache_data(show_spinner=False)
-def get_source_pdf_figures_v2(
+def get_source_pdf_figures_v3(
     file_bytes,
     paper_hash,
 ):
@@ -1317,7 +1317,7 @@ mineru_token = get_mineru_token()
 # ============================================================
 
 source_figure_state_key = (
-    "lal_source_pdf_figures:v2:"
+    "lal_source_pdf_figures:v3:"
     + active_hash()
 )
 
@@ -1348,7 +1348,7 @@ if (
     figure_extraction_engine = (
         source_record.get(
             "engine",
-            "source_pdf_caption_v2",
+            "source_pdf_caption_v3",
         )
     )
 
@@ -1416,13 +1416,13 @@ def prepare_main_figures(
             source_figure_state_key
         ] = {
             "engine": (
-                "source_pdf_caption_v2"
+                "source_pdf_caption_v3"
             ),
             "figures": figures,
         }
         return (
             figures,
-            "source_pdf_caption_v2",
+            "source_pdf_caption_v3",
         )
 
     if (
@@ -2025,7 +2025,7 @@ if (
     figure_extraction_engine = (
         source_record.get(
             "engine",
-            "source_pdf_caption_v2",
+            "source_pdf_caption_v3",
         )
     )
 
@@ -2418,14 +2418,38 @@ if core_record or extracted_study_figures:
                 )
 
                 with figure_col:
+                    figure_page = source_item.get(
+                        "figure_page_number",
+                        source_item.get(
+                            "page_number",
+                            "?",
+                        ),
+                    )
+
+                    caption_page = source_item.get(
+                        "caption_page_number",
+                        figure_page,
+                    )
+
+                    if (
+                        caption_page != figure_page
+                    ):
+                        page_caption = (
+                            f"{source_item.get('figure_label','Figure')} · "
+                            f"Figure page {figure_page} · "
+                            f"legend page {caption_page}"
+                        )
+                    else:
+                        page_caption = (
+                            f"{source_item.get('figure_label','Figure')} · "
+                            f"page {figure_page}"
+                        )
+
                     st.image(
                         source_item.get(
                             "image_path"
                         ),
-                        caption=(
-                            f"{source_item.get('figure_label','Figure')} · "
-                            f"page {source_item.get('page_number','?')}"
-                        ),
+                        caption=page_caption,
                         use_container_width=True,
                     )
 
