@@ -4,7 +4,7 @@ from i18n import language_selector, L
 from knowledge_widget import render_knowledge_archive_widget
 
 
-APP_VERSION = "v0.6.0-open-beta"
+APP_VERSION = "v0.6.1-open-beta"
 
 
 st.set_page_config(

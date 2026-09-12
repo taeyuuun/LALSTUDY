@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.6.1-open-beta] - 2026-09-12
+
+### Home Studio
+- Added a private browser-based landing-page editor at `?home_editor=1`
+- Added Korean/English block editing with live preview
+- Added typography and layout controls including hero/card font sizes
+- Added show/hide controls for major home sections
+- Added persistent publishing through Supabase `home_page_config`
+- Split home responsibilities into `home_page.py`, `home_editor.py`, and `home_config_store.py`
+- `app.py` is now a small public/editor router
+
+## [0.6.0.1-open-beta] - 2026-09-12
+
+### Editable home content
+- Added `HOME_CONTENT.toml` so landing-page copy can be edited without touching Python
+- Added simple show/hide toggles for feature cards, start flows, and Open Beta note
+- Added `HOME_EDIT_GUIDE.md`
+- No dependency, SQL, or secret changes
+
 ## [0.6.0-open-beta] - 2026-09-12
 
 ### Open Beta
