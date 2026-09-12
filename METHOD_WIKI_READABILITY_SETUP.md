@@ -1,35 +1,20 @@
-# v0.5.1 Method Wiki readability setup
+# v0.5.2.2 Method Wiki readability
 
-## Required SQL
+`SUPABASE_METHOD_WIKI_READABILITY_MIGRATION.sql` is NO LONGER REQUIRED.
 
-After the v0.5.0 Method Wiki migration, run:
+LALSTUDY now stores readable Method Wiki content using only the original
+`method_encyclopedia` columns created by `SUPABASE_METHOD_WIKI_MIGRATION.sql`.
 
-`SUPABASE_METHOD_WIKI_READABILITY_MIGRATION.sql`
+Existing columns reused:
+- summary_ko / summary_en
+- principle_ko / principle_en
+- best_for_ko / best_for_en
+- limitations_ko / limitations_en
+- facets
+- quality_status
+- source_model
 
-It adds only one column:
+The UI reconstructs the readable cards from those values.
 
-`method_encyclopedia.article_json jsonb`
-
-Existing rows are preserved.
-
-## Existing entries
-
-Existing v0.5.0 descriptions render immediately in the new layout.
-They are split conservatively into readable bullet cards.
-
-For best quality, open the small expander:
-
-`✨ 이 설명을 새 가독성 포맷으로 업그레이드`
-
-and generate the structured article once.
-
-## Images
-
-Every method always gets a lightweight local SVG Method Map.
-No image API and no Supabase Storage are used.
-
-If the method has a corpus-linked Figure:
-- cached Figure -> can be viewed immediately
-- uncached Figure -> one button loads it from Europe PMC into the existing local cache
-
-No new secret is required.
+If you already created `article_json`, it may remain in Supabase; v0.5.2.2 simply
+does not depend on it.

@@ -194,42 +194,74 @@ def build_method_db_payload(
     facets: Dict,
     model: str,
 ) -> Dict:
+    """
+    Store the readability-first article WITHOUT requiring a new SQL column.
+
+    Existing v0.5.0 columns are reused:
+    - summary_*      <- one-line overview
+    - principle_*    <- newline-separated conceptual steps
+    - best_for_*     <- newline-separated use cases
+    - limitations_*  <- newline-separated caveats
+
+    The UI reconstructs cards from these fields.
+    """
+
     data = normalize_method_entry(
         result,
         canonical_name=canonical_name,
     )
 
-    article_keys = [
-        "key_question_ko",
-        "key_question_en",
-        "one_liner_ko",
-        "one_liner_en",
-        "principle_steps_ko",
-        "principle_steps_en",
-        "best_for_points_ko",
-        "best_for_points_en",
-        "limitation_points_ko",
-        "limitation_points_en",
-        "interpretation_tip_ko",
-        "interpretation_tip_en",
-    ]
+    def join_points(points, fallback):
+        cleaned = [
+            str(x).strip()
+            for x in (points or [])
+            if str(x).strip()
+        ]
+
+        return (
+            "\n".join(cleaned)
+            if cleaned
+            else fallback
+        )
 
     return {
         "canonical_name": canonical_name,
 
-        "summary_ko": data["summary_ko"],
-        "summary_en": data["summary_en"],
-        "principle_ko": data["principle_ko"],
-        "principle_en": data["principle_en"],
-        "best_for_ko": data["best_for_ko"],
-        "best_for_en": data["best_for_en"],
-        "limitations_ko": data["limitations_ko"],
-        "limitations_en": data["limitations_en"],
+        "summary_ko": (
+            data["one_liner_ko"]
+            or data["summary_ko"]
+        ),
+        "summary_en": (
+            data["one_liner_en"]
+            or data["summary_en"]
+        ),
 
-        "article_json": {
-            key: data[key]
-            for key in article_keys
-        },
+        "principle_ko": join_points(
+            data["principle_steps_ko"],
+            data["principle_ko"],
+        ),
+        "principle_en": join_points(
+            data["principle_steps_en"],
+            data["principle_en"],
+        ),
+
+        "best_for_ko": join_points(
+            data["best_for_points_ko"],
+            data["best_for_ko"],
+        ),
+        "best_for_en": join_points(
+            data["best_for_points_en"],
+            data["best_for_en"],
+        ),
+
+        "limitations_ko": join_points(
+            data["limitation_points_ko"],
+            data["limitations_ko"],
+        ),
+        "limitations_en": join_points(
+            data["limitation_points_en"],
+            data["limitations_en"],
+        ),
 
         "facets": facets,
         "quality_status": "AI_GENERATED",

@@ -34,7 +34,7 @@ from method_taxonomy_v2 import (
 from openai_sidebar import render_openai_usage_panel
 
 
-APP_VERSION = "v0.5.2.1-beta"
+APP_VERSION = "v0.5.2.2-beta"
 
 DATA_FILE = Path("method_profiles.json")
 IMAGE_INDEX_FILE = Path("figure_images.json")
@@ -939,87 +939,99 @@ def structured_method_article(
     db_entry,
     lang,
 ):
+    """
+    Reconstruct the readable Method Wiki article from the original v0.5.0
+    columns only. No `article_json` column is required.
+    """
+
     suffix = (
         "_ko"
         if lang == "ko"
         else "_en"
     )
 
-    article = (
+    summary = (
         db_entry.get(
-            "article_json",
-            {},
+            "summary" + suffix,
+            "",
         )
         if db_entry
-        else {}
-    ) or {}
+        else ""
+    )
 
-    def article_text(base, fallback=""):
-        value = article.get(
-            base + suffix
+    principle = (
+        db_entry.get(
+            "principle" + suffix,
+            "",
         )
+        if db_entry
+        else ""
+    )
 
-        if value:
-            return value
-
-        return (
-            db_entry.get(
-                fallback + suffix,
-                "",
-            )
-            if db_entry and fallback
-            else ""
+    best_for = (
+        db_entry.get(
+            "best_for" + suffix,
+            "",
         )
+        if db_entry
+        else ""
+    )
 
-    def article_list(base, fallback_field):
-        value = article.get(
-            base + suffix
+    limitations = (
+        db_entry.get(
+            "limitations" + suffix,
+            "",
         )
+        if db_entry
+        else ""
+    )
 
-        if isinstance(
-            value,
-            list,
-        ) and value:
-            return value
-
-        fallback = (
-            db_entry.get(
-                fallback_field + suffix,
-                "",
-            )
-            if db_entry
-            else ""
+    method_name = (
+        db_entry.get(
+            "canonical_name",
+            "",
         )
+        if db_entry
+        else ""
+    )
 
-        return sentence_points(
-            fallback,
-            max_points=4,
+    if lang == "ko":
+        key_question = (
+            f"{method_name}은 어떤 생물학적 질문에 답하는 실험인가?"
+            if method_name
+            else "이 실험은 어떤 생물학적 질문에 답하는가?"
+        )
+        interpretation_tip = (
+            "측정값 자체와 그 값에서 추론한 생물학적 의미를 구분해서 읽는다."
+        )
+    else:
+        key_question = (
+            f"What biological question does {method_name} answer?"
+            if method_name
+            else "What biological question does this method answer?"
+        )
+        interpretation_tip = (
+            "Separate what the assay directly measures from the biological interpretation inferred from it."
         )
 
     return {
-        "key_question": article_text(
-            "key_question",
+        "key_question": key_question,
+        "one_liner": summary,
+        "principle_steps": sentence_points(
+            principle,
+            max_points=5,
         ),
-        "one_liner": article_text(
-            "one_liner",
-            "summary",
+        "best_for_points": sentence_points(
+            best_for,
+            max_points=5,
         ),
-        "principle_steps": article_list(
-            "principle_steps",
-            "principle",
+        "limitation_points": sentence_points(
+            limitations,
+            max_points=5,
         ),
-        "best_for_points": article_list(
-            "best_for_points",
-            "best_for",
-        ),
-        "limitation_points": article_list(
-            "limitation_points",
-            "limitations",
-        ),
-        "interpretation_tip": article_text(
-            "interpretation_tip",
-        ),
+        "interpretation_tip": interpretation_tip,
     }
+
 
 
 # ============================================================
@@ -1859,127 +1871,6 @@ if db_entry:
         )
     )
 
-    # Existing v0.5.0 entries can be upgraded once to the structured format.
-    if not (
-        db_entry.get(
-            "article_json",
-            {},
-        )
-        or {}
-    ):
-        with st.expander(
-            L(
-                lang,
-                "✨ 이 설명을 새 가독성 포맷으로 업그레이드",
-                "✨ Upgrade this entry to the new readable format",
-            )
-        ):
-            st.caption(
-                L(
-                    lang,
-                    "기존 설명은 유지하면서 structured article만 추가합니다. 한 번만 생성하면 이후 모든 사용자가 재사용합니다.",
-                    "The existing entry is preserved; only the structured article is added. It is generated once and then reused.",
-                )
-            )
-
-            if st.button(
-                L(
-                    lang,
-                    "업그레이드 생성",
-                    "Generate upgrade",
-                ),
-                type="primary",
-                disabled=not openai_ready(),
-                key=(
-                    "upgrade_method_wiki_"
-                    + normalize_method_name(
-                        selected_method
-                    )
-                ),
-            ):
-                with st.spinner(
-                    L(
-                        lang,
-                        "가독성 높은 Method article 생성 중...",
-                        "Generating the structured Method article...",
-                    )
-                ):
-                    try:
-                        result, model, usage = (
-                            generate_method_encyclopedia_entry(
-                                canonical_name=selected_method,
-                                aliases=(
-                                    profile.get(
-                                        "aliases",
-                                        [],
-                                    )
-                                    or []
-                                ),
-                                category=(
-                                    profile.get(
-                                        "category",
-                                        "",
-                                    )
-                                    or ""
-                                ),
-                                parent_method=(
-                                    profile.get(
-                                        "parent_method",
-                                        "",
-                                    )
-                                    or ""
-                                ),
-                                submethods=(
-                                    profile.get(
-                                        "submethods",
-                                        [],
-                                    )
-                                    or []
-                                ),
-                                api_key=(
-                                    get_openai_api_key()
-                                ),
-                            )
-                        )
-
-                        payload = build_method_db_payload(
-                            result,
-                            canonical_name=selected_method,
-                            facets=facets,
-                            model=model,
-                        )
-
-                        method_wiki_store.upsert(
-                            payload
-                        )
-
-                        st.success(
-                            L(
-                                lang,
-                                "가독성 포맷으로 업그레이드했습니다.",
-                                "Upgraded to the structured readable format.",
-                            )
-                        )
-
-                        st.rerun()
-
-                    except Exception as exc:
-                        error_text = str(exc)
-
-                        if "article_json" in error_text:
-                            st.error(
-                                L(
-                                    lang,
-                                    "Supabase의 `article_json` 컬럼이 아직 없습니다. "
-                                    "`SUPABASE_METHOD_WIKI_READABILITY_MIGRATION.sql`을 한 번 실행한 뒤 다시 눌러주세요.",
-                                    "The Supabase `article_json` column is missing. "
-                                    "Run `SUPABASE_METHOD_WIKI_READABILITY_MIGRATION.sql` once, then retry.",
-                                )
-                            )
-                        else:
-                            st.error(
-                                error_text
-                            )
 
 else:
     st.info(
@@ -2010,8 +1901,8 @@ else:
         st.warning(
             L(
                 lang,
-                "`SUPABASE_METHOD_WIKI_MIGRATION.sql`과 v0.5.1 readability migration을 먼저 실행해야 DB에 저장할 수 있습니다.",
-                "Run the Method Wiki SQL migrations before descriptions can be saved.",
+                "`SUPABASE_METHOD_WIKI_MIGRATION.sql`을 먼저 실행해야 DB에 저장할 수 있습니다.",
+                "Run `SUPABASE_METHOD_WIKI_MIGRATION.sql` before descriptions can be saved.",
             )
         )
 
@@ -2102,22 +1993,7 @@ else:
                 st.rerun()
 
             except Exception as exc:
-                error_text = str(exc)
-
-                if "article_json" in error_text:
-                    st.error(
-                        L(
-                            lang,
-                            "Supabase의 `article_json` 컬럼이 아직 없습니다. "
-                            "`SUPABASE_METHOD_WIKI_READABILITY_MIGRATION.sql`을 한 번 실행한 뒤 다시 눌러주세요.",
-                            "The Supabase `article_json` column is missing. "
-                            "Run `SUPABASE_METHOD_WIKI_READABILITY_MIGRATION.sql` once, then retry.",
-                        )
-                    )
-                else:
-                    st.error(
-                        error_text
-                    )
+                st.error(str(exc))
 
 
 # ============================================================

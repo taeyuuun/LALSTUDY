@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.5.2.2-beta] - 2026-09-12
+
+### Schema-free Method Wiki
+- Removed the `article_json` database dependency
+- Reuses only the original v0.5.0 `method_encyclopedia` columns
+- Stores readable bullet content as newline-separated existing text fields
+- Reconstructs the readability-first UI at render time
+- `SUPABASE_METHOD_WIKI_READABILITY_MIGRATION.sql` is no longer required
+
 ## [0.5.2.1-beta] - 2026-09-12
 
 ### Taxonomy import hotfix
