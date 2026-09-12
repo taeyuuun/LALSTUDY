@@ -1,0 +1,3 @@
+This patch is ROOT-LEVEL.
+After overwrite, project-root openai_sidebar.py must contain: OpenAI READY
+Project-root knowledge_widget.py must contain: e.g. apoptotic stress

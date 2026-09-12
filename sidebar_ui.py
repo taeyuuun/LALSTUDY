@@ -78,9 +78,6 @@ def render_public_sidebar(
         ):
             return
 
-        # Old OpenAI sidebar restored intentionally.
-        # Visibility/order are still controlled by Sidebar Studio,
-        # but the OpenAI panel itself uses its original v0.6.1 UI.
         render_openai_usage_panel(
             lang=lang
         )
