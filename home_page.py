@@ -1,8 +1,11 @@
-"""LALSTUDY branded public landing page.
+"""LALSTUDY polished branded homepage.
 
-This page intentionally uses the user's original logo and tiger artwork.
-The generated mockup is a design reference only; the app remains real,
-interactive Streamlit UI.
+This implementation recreates the generated mockup as real Streamlit UI.
+The mockup image itself is NOT used as a background.
+
+Original user-made brand assets are used directly:
+- LALSTUDY logo
+- tiger expressions
 """
 
 from __future__ import annotations
@@ -22,6 +25,10 @@ TIGER_SURPRISED = ASSET_DIR / "tiger_surprised.jpg"
 TIGER_SERIOUS = ASSET_DIR / "tiger_serious.jpg"
 
 
+def _L(lang: str, ko: str, en: str) -> str:
+    return ko if lang == "ko" else en
+
+
 def _copy(content, lang):
     return content.get(
         "ko" if lang == "ko" else "en",
@@ -29,71 +36,53 @@ def _copy(content, lang):
     )
 
 
-def _L(lang, ko, en):
-    return ko if lang == "ko" else en
-
-
-def _int(value, fallback, lo, hi):
-    try:
-        value = int(value)
-    except Exception:
-        value = fallback
-    return max(lo, min(hi, value))
-
-
-def _feature_card(
+def _feature(
     *,
-    tiger,
+    image,
     title,
     body,
-    link=None,
-    link_label=None,
-    note=None,
+    page=None,
+    button=None,
 ):
     with st.container(border=True):
-        image_col, text_col = st.columns(
-            [0.28, 0.72],
+        c1, c2 = st.columns(
+            [0.26, 0.74],
             vertical_alignment="center",
         )
 
-        with image_col:
+        with c1:
             st.image(
-                tiger,
-                width=88,
+                image,
+                width=78,
             )
 
-        with text_col:
+        with c2:
             st.markdown(
-                f"### {title}"
+                f'<div class="lal-card-title">{title}</div>',
+                unsafe_allow_html=True,
             )
-            st.caption(
-                body
+            st.markdown(
+                f'<div class="lal-card-copy">{body}</div>',
+                unsafe_allow_html=True,
             )
 
-        if link:
+        if page:
             st.page_link(
-                link,
-                label=link_label or title,
+                page,
+                label=button or title,
                 use_container_width=True,
             )
 
-        if note:
-            st.caption(
-                note
-            )
 
-
-def _flow_step(
-    icon,
-    title,
-    body,
-):
+def _benefit(icon, title, body):
     st.markdown(
         f"""
-<div class="lal-flow-step-v2">
-  <div class="lal-flow-icon">{icon}</div>
-  <div class="lal-flow-title-v2">{title}</div>
-  <div class="lal-flow-body-v2">{body}</div>
+<div class="lal-benefit">
+  <div class="lal-benefit-icon">{icon}</div>
+  <div>
+    <div class="lal-benefit-title">{title}</div>
+    <div class="lal-benefit-copy">{body}</div>
+  </div>
 </div>
 """,
         unsafe_allow_html=True,
@@ -106,27 +95,12 @@ def render_home(
     lang,
     interactive=True,
 ):
-    design = content.get(
-        "design",
-        {},
-    )
     copy = _copy(
         content,
         lang,
     )
 
-    page_width = _int(
-        design.get(
-            "page_max_width_px",
-            1180,
-        ),
-        1180,
-        900,
-        1500,
-    )
-
-    # New v2 home keys deliberately do not collide with old published config.
-    brand_title = copy.get(
+    title = copy.get(
         "home_brand_title",
         "LALSTUDY",
     )
@@ -134,134 +108,270 @@ def render_home(
         "home_kicker",
         _L(
             lang,
-            "논문을 읽고, 연구를 이해하는 하나의 흐름",
-            "One flow from reading papers to understanding research",
+            "논문을 읽는 즐거움, 연구가 더 가까워지는 시간",
+            "Make papers easier to enter and research easier to understand",
         ),
     )
     description = copy.get(
         "home_description",
         _L(
             lang,
-            "LALSTUDY는 생명과학 논문을 분석하고 학습하는 도구입니다. "
-            "PDF 한 편에서 연구의 핵심 논리와 Figure를 파악하고, "
-            "이해가 필요한 개념과 실제 실험기법까지 이어서 학습할 수 있습니다.",
-            "LALSTUDY is a learning tool for analyzing life-science papers. "
-            "Start from one PDF, understand the study logic and Figures, "
-            "then continue into the concepts and experimental methods you need.",
+            "LALSTUDY는 생명과학 논문을 분석하고 학습하는 통합 도구입니다. "
+            "논문의 핵심 논리와 Figure를 파악하고, 이해가 필요한 배경 개념과 "
+            "실제 실험기법까지 하나의 학습 흐름으로 이어갈 수 있습니다.",
+            "LALSTUDY is an integrated learning tool for life-science papers. "
+            "Understand the core logic and Figures, then continue into the background concepts "
+            "and experimental methods you need.",
         ),
     )
 
     st.markdown(
-        f"""
+        """
 <style>
-.block-container {{
-    max-width:{page_width}px;
-    padding-top:1.55rem;
-    padding-bottom:4rem;
-}}
+.block-container {
+    max-width: 1240px;
+    padding-top: 1.15rem;
+    padding-bottom: 3.5rem;
+}
 
-.lal-kicker {{
-    display:inline-block;
-    color:#16843f;
-    font-size:0.88rem;
-    font-weight:750;
-    margin-bottom:0.35rem;
-}}
+/* ---------- HERO ---------- */
+.lal-hero-shell {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid rgba(35, 73, 47, 0.08);
+    border-radius: 22px;
+    padding: 1.35rem 1.5rem 1.25rem 1.5rem;
+    background:
+        radial-gradient(circle at 88% 18%, rgba(77,184,91,.14) 0 9rem, transparent 9.1rem),
+        radial-gradient(circle at 76% 105%, rgba(125,199,105,.13) 0 11rem, transparent 11.1rem),
+        linear-gradient(125deg, #fffaf0 0%, #fffdf8 50%, #f3faee 100%);
+    box-shadow: 0 10px 30px rgba(50,80,55,.045);
+}
 
-.lal-brand-title {{
-    font-size:clamp(2.5rem, 5vw, 4.5rem);
-    line-height:1.0;
-    letter-spacing:-0.045em;
-    font-weight:900;
-    margin:0.15rem 0 0.8rem 0;
-}}
-
-.lal-product-copy {{
-    font-size:1.05rem;
-    line-height:1.72;
-    max-width:760px;
-    opacity:0.80;
-}}
-
-.lal-mini-label {{
-    font-size:0.78rem;
-    font-weight:800;
-    letter-spacing:0.08em;
-    color:#188648;
-    margin-bottom:0.25rem;
-}}
-
-.lal-section-heading {{
-    font-size:1.65rem;
-    font-weight:850;
-    letter-spacing:-0.025em;
-    margin-top:0.2rem;
-    margin-bottom:0.25rem;
-}}
-
-.lal-section-sub {{
-    opacity:0.68;
-    line-height:1.6;
-    margin-bottom:0.8rem;
-}}
-
-.lal-flow-step-v2 {{
-    text-align:center;
-    padding:0.35rem 0.2rem;
-}}
-
-.lal-flow-icon {{
-    width:3.1rem;
-    height:3.1rem;
-    margin:0 auto 0.45rem auto;
+.lal-open-beta {
+    display:inline-flex;
+    align-items:center;
+    gap:.35rem;
+    padding:.28rem .6rem;
     border-radius:999px;
-    background:rgba(28, 169, 76, 0.10);
+    background:#edf7ea;
+    color:#148244;
+    font-size:.72rem;
+    font-weight:850;
+    letter-spacing:.08em;
+    margin-bottom:.55rem;
+}
+
+.lal-kicker {
+    color:#187d42;
+    font-size:.92rem;
+    font-weight:800;
+    margin-bottom:.35rem;
+}
+
+.lal-title {
+    margin:.35rem 0 .55rem 0;
+    font-size:clamp(2.8rem, 6vw, 5.3rem);
+    line-height:.96;
+    font-weight:950;
+    letter-spacing:-.055em;
+}
+
+.lal-desc {
+    max-width:720px;
+    font-size:1.03rem;
+    line-height:1.7;
+    opacity:.80;
+}
+
+.lal-upload-card {
+    margin-top:1rem;
+    padding:.95rem 1rem;
+    border-radius:16px;
+    border:1px dashed rgba(255,255,255,.70);
+    background:linear-gradient(135deg,#33b44e,#2fa845);
+    color:white;
+    box-shadow:0 8px 20px rgba(42,155,64,.15);
+}
+
+.lal-upload-title {
+    font-size:1.05rem;
+    font-weight:850;
+    margin-bottom:.15rem;
+}
+
+.lal-upload-copy {
+    font-size:.87rem;
+    opacity:.88;
+}
+
+.lal-tiger-note {
+    margin-top:.45rem;
+    padding:.65rem .8rem;
+    background:#eef8e9;
+    border-radius:18px 18px 18px 5px;
+    color:#176b37;
+    font-size:.9rem;
+    font-weight:750;
+    line-height:1.45;
+    text-align:center;
+}
+
+.lal-small-pills {
+    margin-top:.65rem;
+    display:flex;
+    flex-wrap:wrap;
+    gap:.35rem;
+}
+
+.lal-pill {
+    padding:.22rem .5rem;
+    border-radius:999px;
+    background:rgba(19,128,62,.07);
+    font-size:.74rem;
+    opacity:.74;
+}
+
+/* ---------- SECTIONS ---------- */
+.lal-section-title {
+    font-size:1.55rem;
+    font-weight:900;
+    letter-spacing:-.025em;
+    margin:0 0 .25rem 0;
+}
+
+.lal-section-copy {
+    font-size:.92rem;
+    opacity:.68;
+    line-height:1.55;
+    margin-bottom:.9rem;
+}
+
+.lal-card-title {
+    font-size:1.03rem;
+    font-weight:850;
+    margin-bottom:.18rem;
+}
+
+.lal-card-copy {
+    font-size:.88rem;
+    line-height:1.5;
+    opacity:.72;
+}
+
+/* Streamlit containers that hold the 3 product cards */
+div[data-testid="stHorizontalBlock"] > div:nth-child(1) div[data-testid="stVerticalBlockBorderWrapper"] {
+    background:linear-gradient(135deg,#f1fbef,#fbfefb);
+}
+div[data-testid="stHorizontalBlock"] > div:nth-child(2) div[data-testid="stVerticalBlockBorderWrapper"] {
+    background:linear-gradient(135deg,#fffaf0,#fffdf8);
+}
+div[data-testid="stHorizontalBlock"] > div:nth-child(3) div[data-testid="stVerticalBlockBorderWrapper"] {
+    background:linear-gradient(135deg,#fff5ef,#fffaf7);
+}
+
+/* ---------- FLOW ---------- */
+.lal-flow-wrap {
+    border:1px solid rgba(41,69,50,.09);
+    border-radius:18px;
+    padding:1.05rem 1.15rem;
+    background:linear-gradient(180deg,#fbfdff,#f8fbfc);
+}
+
+.lal-flow-row {
+    display:grid;
+    grid-template-columns:repeat(5, 1fr);
+    gap:.55rem;
+    margin-top:.8rem;
+}
+
+.lal-flow-item {
+    text-align:center;
+    position:relative;
+    padding:.4rem;
+}
+
+.lal-flow-item:not(:last-child)::after {
+    content:"→";
+    position:absolute;
+    right:-.45rem;
+    top:1.25rem;
+    color:rgba(31,41,55,.28);
+    font-size:1.35rem;
+}
+
+.lal-flow-icon {
+    width:3rem;
+    height:3rem;
+    margin:0 auto .45rem auto;
+    border-radius:999px;
     display:flex;
     align-items:center;
     justify-content:center;
-    font-size:1.35rem;
-}}
+    background:#e9f7ea;
+    font-size:1.25rem;
+}
 
-.lal-flow-title-v2 {{
-    font-weight:800;
-    font-size:0.95rem;
-}}
+.lal-flow-title {
+    font-weight:850;
+    font-size:.92rem;
+}
 
-.lal-flow-body-v2 {{
-    margin-top:0.18rem;
-    font-size:0.82rem;
-    line-height:1.45;
-    opacity:0.68;
-}}
+.lal-flow-copy {
+    font-size:.76rem;
+    margin-top:.15rem;
+    opacity:.64;
+    line-height:1.35;
+}
 
-.lal-benefit {{
-    min-height:132px;
-    padding:0.95rem 1rem;
+/* ---------- BENEFITS ---------- */
+.lal-benefit {
+    display:flex;
+    gap:.8rem;
+    align-items:flex-start;
+    min-height:118px;
+    padding:.9rem .95rem;
+    border-radius:16px;
+    border:1px solid rgba(41,69,50,.09);
+    background:#fff;
+}
+
+.lal-benefit-icon {
+    min-width:2.65rem;
+    height:2.65rem;
+    border-radius:999px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:#eef8eb;
+    font-size:1.2rem;
+}
+
+.lal-benefit-title {
+    font-weight:850;
+    margin-bottom:.25rem;
+}
+
+.lal-benefit-copy {
+    font-size:.86rem;
+    line-height:1.48;
+    opacity:.69;
+}
+
+/* ---------- QUOTE ---------- */
+.lal-quote {
+    padding:.85rem 1rem;
     border-radius:15px;
-    border:1px solid rgba(49,51,63,.10);
-    background:rgba(255,255,255,.76);
-}}
-
-.lal-benefit-title {{
-    font-weight:800;
-    margin-bottom:0.35rem;
-}}
-
-.lal-benefit-body {{
-    opacity:0.72;
-    font-size:0.92rem;
+    background:linear-gradient(90deg,#eef9ed,#f7fcf6);
+    border:1px solid rgba(40,133,69,.08);
     line-height:1.55;
-}}
+}
 
-.lal-quote {{
-    margin-top:1rem;
-    padding:0.95rem 1.1rem;
-    border-radius:15px;
-    background:rgba(28,169,76,0.07);
-    border:1px solid rgba(28,169,76,0.10);
-    font-size:0.95rem;
-    line-height:1.6;
-}}
+/* page-link polish */
+div[data-testid="stPageLink"] a {
+    border-radius:12px !important;
+    font-weight:750 !important;
+}
 </style>
 """,
         unsafe_allow_html=True,
@@ -270,223 +380,243 @@ def render_home(
     # ============================================================
     # HERO
     # ============================================================
-    with st.container(border=True):
-        left, right = st.columns(
-            [1.35, 0.65],
-            gap="large",
-            vertical_alignment="center",
+    st.markdown(
+        '<div class="lal-hero-shell">',
+        unsafe_allow_html=True,
+    )
+
+    hero_left, hero_right = st.columns(
+        [1.45, .55],
+        gap="large",
+        vertical_alignment="center",
+    )
+
+    with hero_left:
+        st.markdown(
+            '<div class="lal-open-beta">● OPEN BETA</div>',
+            unsafe_allow_html=True,
         )
 
-        with left:
-            st.markdown(
-                '<div class="lal-mini-label">OPEN BETA</div>',
-                unsafe_allow_html=True,
-            )
+        st.markdown(
+            f'<div class="lal-kicker">{kicker}</div>',
+            unsafe_allow_html=True,
+        )
 
-            # The real user-made logo, not the generated mockup logo.
-            st.image(
-                LOGO,
-                width=390,
-            )
+        # Original user-made logo.
+        st.image(
+            LOGO,
+            width=390,
+        )
 
-            st.markdown(
-                f'<div class="lal-kicker">{kicker}</div>',
-                unsafe_allow_html=True,
-            )
+        st.markdown(
+            f'<div class="lal-title">{title}</div>',
+            unsafe_allow_html=True,
+        )
 
-            st.markdown(
-                f'<div class="lal-brand-title">{brand_title}</div>',
-                unsafe_allow_html=True,
-            )
+        st.markdown(
+            f'<div class="lal-desc">{description}</div>',
+            unsafe_allow_html=True,
+        )
 
-            st.markdown(
-                f'<div class="lal-product-copy">{description}</div>',
-                unsafe_allow_html=True,
-            )
+        st.markdown(
+            f"""
+<div class="lal-upload-card">
+  <div class="lal-upload-title">📄 {_L(lang, "논문 PDF로 시작하기", "Start with a paper PDF")}</div>
+  <div class="lal-upload-copy">
+    {_L(lang, "PDF를 업로드하면 핵심 내용과 Figure부터 차근차근 읽을 수 있습니다.",
+        "Upload a PDF and work through the core story and Figures step by step.")}
+  </div>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
 
-            st.write("")
+        c1, c2 = st.columns(2)
 
-            cta1, cta2 = st.columns(
-                2
-            )
-
-            with cta1:
-                if interactive:
-                    st.page_link(
-                        "pages/1_Learn_a_Paper.py",
-                        label=copy.get(
-                            "home_primary_cta",
-                            _L(
-                                lang,
-                                "📄 논문 분석 시작하기",
-                                "📄 Analyze a paper",
-                            ),
+        with c1:
+            if interactive:
+                st.page_link(
+                    "pages/1_Learn_a_Paper.py",
+                    label=copy.get(
+                        "home_primary_cta",
+                        _L(
+                            lang,
+                            "Learn a Paper 시작하기 →",
+                            "Start Learn a Paper →",
                         ),
-                        use_container_width=True,
-                    )
-                else:
-                    st.button(
-                        copy.get(
-                            "home_primary_cta",
-                            "📄 논문 분석 시작하기",
-                        ),
-                        disabled=True,
-                        use_container_width=True,
-                        key="home_preview_primary",
-                    )
-
-            with cta2:
-                if interactive:
-                    st.page_link(
-                        "pages/2_Method_Wiki.py",
-                        label=copy.get(
-                            "home_secondary_cta",
-                            _L(
-                                lang,
-                                "🧬 실험기법 찾아보기",
-                                "🧬 Explore methods",
-                            ),
-                        ),
-                        use_container_width=True,
-                    )
-                else:
-                    st.button(
-                        copy.get(
-                            "home_secondary_cta",
-                            "🧬 실험기법 찾아보기",
-                        ),
-                        disabled=True,
-                        use_container_width=True,
-                        key="home_preview_secondary",
-                    )
-
-            st.caption(
-                _L(
-                    lang,
-                    "PDF에서 시작해 핵심 내용 → Figure → 개념 → 실험기법으로 이어집니다.",
-                    "Start from a PDF and move through the core story → Figures → concepts → methods.",
+                    ),
+                    use_container_width=True,
                 )
-            )
-
-        with right:
-            # Exact original wink mascot. The eyebrow is preserved.
-            st.image(
-                TIGER_WINK,
-                use_container_width=True,
-            )
-            st.caption(
-                _L(
-                    lang,
-                    "어려운 논문도 하나씩 연결하면 읽을 수 있어요.",
-                    "Complex papers become manageable when you connect them step by step.",
+            else:
+                st.button(
+                    "Learn a Paper",
+                    disabled=True,
+                    use_container_width=True,
+                    key="home_mock_preview_1",
                 )
+
+        with c2:
+            if interactive:
+                st.page_link(
+                    "pages/2_Method_Wiki.py",
+                    label=copy.get(
+                        "home_secondary_cta",
+                        _L(
+                            lang,
+                            "Method Wiki 둘러보기 →",
+                            "Explore Method Wiki →",
+                        ),
+                    ),
+                    use_container_width=True,
+                )
+            else:
+                st.button(
+                    "Method Wiki",
+                    disabled=True,
+                    use_container_width=True,
+                    key="home_mock_preview_2",
+                )
+
+        st.markdown(
+            """
+<div class="lal-small-pills">
+  <span class="lal-pill">PDF</span>
+  <span class="lal-pill">Figure-first</span>
+  <span class="lal-pill">Concept Archive</span>
+  <span class="lal-pill">Method → Paper → Panel</span>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+
+    with hero_right:
+        st.markdown(
+            '<div class="lal-tiger-note">'
+            + _L(
+                lang,
+                "어려운 논문도<br>함께라면 읽을 수 있어요!",
+                "Complex papers become easier<br>when we connect the pieces.",
             )
+            + "</div>",
+            unsafe_allow_html=True,
+        )
+
+        st.image(
+            TIGER_WINK,
+            use_container_width=True,
+        )
+
+        st.caption(
+            _L(
+                lang,
+                "오늘은 어디서부터 시작할까요?",
+                "Where should we start today?",
+            )
+        )
+
+    st.markdown(
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
     st.write("")
 
     # ============================================================
-    # QUICK START
+    # PRODUCT CARDS
     # ============================================================
     st.markdown(
-        '<div class="lal-section-heading">'
+        '<div class="lal-section-title">'
         + _L(
             lang,
             "어디서 시작할까요?",
-            "Where do you want to start?",
-        )
-        + "</div>",
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        '<div class="lal-section-sub">'
-        + _L(
-            lang,
-            "논문을 읽고 싶은지, 막힌 개념을 찾고 싶은지, 실험기법을 배우고 싶은지에 따라 바로 이동하세요.",
-            "Jump directly to paper reading, concept lookup, or experimental-method learning.",
+            "Choose your starting point",
         )
         + "</div>",
         unsafe_allow_html=True,
     )
 
-    f1, f2, f3 = st.columns(
+    st.markdown(
+        '<div class="lal-section-copy">'
+        + _L(
+            lang,
+            "논문 읽기, 개념 이해, 실험기법 학습을 각각 따로 하지 않고 서로 이어서 사용할 수 있습니다.",
+            "Move between paper reading, concept learning, and experimental methods without breaking your study flow.",
+        )
+        + "</div>",
+        unsafe_allow_html=True,
+    )
+
+    card1, card2, card3 = st.columns(
         3,
         gap="medium",
     )
 
-    with f1:
-        _feature_card(
-            # Serious tiger = original artwork with eyebrows intact.
-            tiger=TIGER_SERIOUS,
-            title=copy.get(
-                "home_feature_learn_title",
-                "Learn a Paper",
-            ),
+    with card1:
+        _feature(
+            image=TIGER_SERIOUS,  # eyebrows preserved
+            title="Learn a Paper",
             body=copy.get(
                 "home_feature_learn_text",
                 _L(
                     lang,
-                    "PDF 한 편의 핵심 논리, Figure, 실험전략을 단계적으로 읽습니다.",
-                    "Read one PDF through its core logic, Figures, and experimental strategy.",
+                    "연구의 핵심 논리와 Figure, 실험전략까지 논문 한 편을 단계적으로 읽습니다.",
+                    "Read one paper step by step through its core logic, Figures, and experimental strategy.",
                 ),
             ),
-            link=(
+            page=(
                 "pages/1_Learn_a_Paper.py"
                 if interactive
                 else None
             ),
-            link_label=_L(
+            button=_L(
                 lang,
-                "Learn a Paper 열기 →",
-                "Open Learn a Paper →",
+                "논문 읽기 →",
+                "Read a paper →",
             ),
         )
 
-    with f2:
-        _feature_card(
-            tiger=TIGER_SMILE,
-            title=copy.get(
-                "home_feature_archive_title",
-                "Knowledge Archive",
-            ),
+    with card2:
+        _feature(
+            image=TIGER_SMILE,
+            title="Knowledge Archive",
             body=copy.get(
                 "home_feature_archive_text",
                 _L(
                     lang,
-                    "논문을 읽다가 막힌 용어·구절을 찾아보고 저장해 다시 꺼내봅니다.",
+                    "막히는 용어·구절을 찾아보고 저장해, 다른 논문을 읽을 때 다시 꺼내봅니다.",
                     "Look up unfamiliar terms, save them, and reuse them while reading future papers.",
                 ),
             ),
-            note=_L(
+        )
+        st.caption(
+            _L(
                 lang,
-                "왼쪽 사이드바의 🧠 Knowledge Archive에서 바로 사용",
-                "Use 🧠 Knowledge Archive directly from the left sidebar",
-            ),
+                "왼쪽 사이드바의 🧠 Knowledge Archive",
+                "Use 🧠 Knowledge Archive in the left sidebar",
+            )
         )
 
-    with f3:
-        _feature_card(
-            tiger=TIGER_BASIC,
-            title=copy.get(
-                "home_feature_method_title",
-                "Method Wiki",
-            ),
+    with card3:
+        _feature(
+            image=TIGER_BASIC,
+            title="Method Wiki",
             body=copy.get(
                 "home_feature_method_text",
                 _L(
                     lang,
-                    "실험기법의 원리와 해석법을 배우고, 실제 논문 Figure·panel 사용 사례까지 연결합니다.",
-                    "Learn method principles and interpretation, then connect them to real paper Figures and panels.",
+                    "실험기법의 원리와 해석을 배우고 실제 논문의 Figure·panel 사용 사례까지 연결합니다.",
+                    "Learn how methods work and connect them to real paper Figures and panels.",
                 ),
             ),
-            link=(
+            page=(
                 "pages/2_Method_Wiki.py"
                 if interactive
                 else None
             ),
-            link_label=_L(
+            button=_L(
                 lang,
-                "Method Wiki 열기 →",
-                "Open Method Wiki →",
+                "실험기법 보기 →",
+                "Explore methods →",
             ),
         )
 
@@ -495,168 +625,204 @@ def render_home(
     # ============================================================
     # LEARNING FLOW
     # ============================================================
-    with st.container(border=True):
-        st.markdown(
-            '<div class="lal-section-heading">'
-            + _L(
-                lang,
-                "논문 학습 흐름",
-                "Paper learning flow",
-            )
-            + "</div>",
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            '<div class="lal-section-sub">'
-            + _L(
-                lang,
-                "한 편의 논문을 읽다가 생기는 다음 질문을 끊지 않고 이어갑니다.",
-                "Keep moving through the next question that naturally appears while reading a paper.",
-            )
-            + "</div>",
-            unsafe_allow_html=True,
-        )
+    st.markdown(
+        '<div class="lal-flow-wrap">',
+        unsafe_allow_html=True,
+    )
 
-        cols = st.columns(
-            5
+    st.markdown(
+        '<div class="lal-section-title">'
+        + _L(
+            lang,
+            "논문 학습 흐름",
+            "Paper learning flow",
         )
-        steps = [
-            (
-                "📄",
-                _L(lang, "PDF 업로드", "Upload PDF"),
-                _L(lang, "논문으로 시작", "Start from the paper"),
-            ),
-            (
-                "🎯",
-                _L(lang, "핵심 내용", "Core story"),
-                _L(lang, "질문·결과·결론", "Question, results, conclusion"),
-            ),
-            (
-                "🖼️",
-                "Figure",
-                _L(lang, "원문과 함께 이해", "Read with the source"),
-            ),
-            (
-                "🧠",
-                _L(lang, "개념 이해", "Concepts"),
-                _L(lang, "막히는 배경지식", "Resolve knowledge gaps"),
-            ),
-            (
-                "🧬",
-                _L(lang, "실험기법", "Methods"),
-                _L(lang, "원리부터 실제 사용까지", "From principle to real use"),
-            ),
-        ]
+        + "</div>",
+        unsafe_allow_html=True,
+    )
 
-        for col, step in zip(
-            cols,
-            steps,
-        ):
-            with col:
-                _flow_step(
-                    *step
-                )
+    st.markdown(
+        '<div class="lal-section-copy">'
+        + _L(
+            lang,
+            "한 편의 논문이 깊은 이해로 이어지는 과정을 하나의 흐름으로 연결합니다.",
+            "Connect one paper to the deeper questions that appear while you read.",
+        )
+        + "</div>",
+        unsafe_allow_html=True,
+    )
+
+    flow = [
+        (
+            "📄",
+            _L(lang, "PDF 업로드", "Upload PDF"),
+            _L(lang, "논문으로 시작", "Start from the paper"),
+        ),
+        (
+            "🎯",
+            _L(lang, "핵심 내용", "Core story"),
+            _L(lang, "질문·결과·결론", "Question, results, conclusion"),
+        ),
+        (
+            "🖼️",
+            "Figure",
+            _L(lang, "원문 Figure 이해", "Understand original Figures"),
+        ),
+        (
+            "💡",
+            _L(lang, "개념 이해", "Concepts"),
+            _L(lang, "배경지식 연결", "Connect background knowledge"),
+        ),
+        (
+            "🧪",
+            _L(lang, "실험기법", "Methods"),
+            _L(lang, "실제 사용까지", "Trace real usage"),
+        ),
+    ]
+
+    flow_html = '<div class="lal-flow-row">'
+    for icon, flow_title, flow_copy in flow:
+        flow_html += f"""
+<div class="lal-flow-item">
+  <div class="lal-flow-icon">{icon}</div>
+  <div class="lal-flow-title">{flow_title}</div>
+  <div class="lal-flow-copy">{flow_copy}</div>
+</div>
+"""
+    flow_html += "</div>"
+
+    st.markdown(
+        flow_html,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
     st.write("")
 
     # ============================================================
     # WHY
     # ============================================================
-    st.markdown(
-        '<div class="lal-section-heading">'
-        + _L(
-            lang,
-            "왜 LALSTUDY인가?",
-            "Why LALSTUDY?",
-        )
-        + "</div>",
-        unsafe_allow_html=True,
-    )
-
-    b1, b2, b3 = st.columns(
-        3,
-        gap="medium",
-    )
-
-    benefits = [
-        (
-            b1,
-            "⚡",
-            _L(lang, "빠른 논문 진입", "Faster entry"),
-            _L(
-                lang,
-                "긴 논문에서도 먼저 봐야 할 연구 질문과 핵심 흐름을 잡을 수 있습니다.",
-                "Find the research question and core story before getting lost in a long paper.",
-            ),
-        ),
-        (
-            b2,
-            "📊",
-            _L(lang, "Figure 중심 이해", "Figure-first understanding"),
-            _L(
-                lang,
-                "원문 Figure와 legend를 중심으로 실제 데이터가 무엇을 말하는지 따라갑니다.",
-                "Follow what the data actually show through original Figures and legends.",
-            ),
-        ),
-        (
-            b3,
-            "🔗",
-            _L(lang, "개념과 실험 연결", "Connect concepts and methods"),
-            _L(
-                lang,
-                "모르는 배경개념에서 멈추지 않고 실제 실험기법과 논문 사용 사례까지 이어갑니다.",
-                "Move from unfamiliar concepts into the experimental methods and real examples behind them.",
-            ),
-        ),
-    ]
-
-    for col, icon, title, body in benefits:
-        with col:
-            st.markdown(
-                f"""
-<div class="lal-benefit">
-  <div style="font-size:1.35rem; margin-bottom:0.45rem;">{icon}</div>
-  <div class="lal-benefit-title">{title}</div>
-  <div class="lal-benefit-body">{body}</div>
-</div>
-""",
-                unsafe_allow_html=True,
-            )
-
-    quote_col, tiger_col = st.columns(
-        [0.82, 0.18],
+    why_left, why_right = st.columns(
+        [0.28, 0.72],
+        gap="large",
         vertical_alignment="center",
     )
 
-    with quote_col:
+    with why_left:
         st.markdown(
-            '<div class="lal-quote">'
+            '<div class="lal-section-title">'
             + _L(
                 lang,
-                "<b>좋은 논문을 더 빨리 읽는 것보다, 좋은 질문을 놓치지 않고 끝까지 이해하는 것.</b><br>"
-                "LALSTUDY는 그 학습 흐름을 이어주는 도구를 목표로 합니다.",
-                "<b>The goal is not just to read faster, but to keep the right questions connected until the paper makes sense.</b><br>"
-                "LALSTUDY is built to support that learning flow.",
+                "왜 LALSTUDY인가?",
+                "Why LALSTUDY?",
             )
             + "</div>",
             unsafe_allow_html=True,
         )
 
-    with tiger_col:
-        st.image(
-            TIGER_SURPRISED,
-            use_container_width=True,
+        st.markdown(
+            '<div class="lal-section-copy">'
+            + _L(
+                lang,
+                "생명과학 논문을 처음부터 끝까지 혼자 버티지 않아도 되도록, "
+                "읽다가 생기는 다음 질문을 바로 이어주는 학습 경험을 목표로 합니다.",
+                "A learning experience that helps you follow the next question instead of struggling through a paper alone.",
+            )
+            + "</div>",
+            unsafe_allow_html=True,
         )
 
-    if design.get(
-        "show_open_beta_note",
-        True,
-    ):
-        st.caption(
-            _L(
-                lang,
-                "Open Beta · 일부 자동 분석과 Method/Figure 연결은 원문 확인이 필요할 수 있습니다.",
-                "Open Beta · Some automated analysis and Method/Figure links may require source verification.",
-            )
+        st.image(
+            TIGER_SURPRISED,
+            width=118,
         )
+
+    with why_right:
+        b1, b2, b3 = st.columns(
+            3,
+            gap="small",
+        )
+
+        with b1:
+            _benefit(
+                "⚡",
+                _L(
+                    lang,
+                    "빠른 논문 진입",
+                    "Faster entry",
+                ),
+                _L(
+                    lang,
+                    "긴 논문에서도 먼저 봐야 할 질문과 핵심 흐름부터 잡습니다.",
+                    "Find the question and core story before getting lost in a long paper.",
+                ),
+            )
+
+        with b2:
+            _benefit(
+                "📊",
+                _L(
+                    lang,
+                    "Figure 중심 이해",
+                    "Figure-first",
+                ),
+                _L(
+                    lang,
+                    "원문 Figure와 legend를 중심으로 실제 데이터가 무엇을 보여주는지 따라갑니다.",
+                    "Follow what the data show through the original Figures and legends.",
+                ),
+            )
+
+        with b3:
+            _benefit(
+                "🔗",
+                _L(
+                    lang,
+                    "개념 · 실험 연결",
+                    "Concept → method",
+                ),
+                _L(
+                    lang,
+                    "배경 개념에서 멈추지 않고 실제 실험기법과 논문 사용 사례까지 이어갑니다.",
+                    "Move from background concepts into methods and real paper usage.",
+                ),
+            )
+
+    st.write("")
+
+    quote_left, quote_right = st.columns(
+        [.12, .88],
+        vertical_alignment="center",
+    )
+
+    with quote_left:
+        st.image(
+            TIGER_SMILE,
+            width=86,
+        )
+
+    with quote_right:
+        st.markdown(
+            '<div class="lal-quote">'
+            + _L(
+                lang,
+                "<b>좋은 논문은 좋은 질문에서 시작하고, 깊은 이해는 연결된 질문에서 시작합니다.</b><br>"
+                "LALSTUDY는 논문 한 편이 다음 배움으로 이어지도록 돕습니다.",
+                "<b>Good papers begin with good questions, and deep understanding comes from keeping those questions connected.</b><br>"
+                "LALSTUDY helps one paper lead naturally into the next piece of learning.",
+            )
+            + "</div>",
+            unsafe_allow_html=True,
+        )
+
+    st.caption(
+        _L(
+            lang,
+            "Open Beta · 일부 자동 분석과 Method/Figure 연결은 원문 확인이 필요할 수 있습니다.",
+            "Open Beta · Some automated analysis and Method/Figure links may require source verification.",
+        )
+    )
