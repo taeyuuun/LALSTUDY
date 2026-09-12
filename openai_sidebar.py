@@ -74,7 +74,11 @@ def render_openai_usage_panel(
         or 0
     )
 
-    title = "🤖 OpenAI"
+    title = (
+        "🟢 OpenAI"
+        if openai_ready()
+        else "⚪ OpenAI"
+    )
 
     if (
         detail == "minimal"
@@ -105,6 +109,14 @@ def render_openai_usage_panel(
                     )
                 )
                 return
+
+            st.success(
+                _L(
+                    lang,
+                    "OpenAI 사용 가능",
+                    "OpenAI available",
+                )
+            )
 
             if official.get("ok"):
                 total_requests = int(

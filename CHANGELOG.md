@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.2.1-open-beta] - 2026-09-12
+
+### Sidebar copy hotfix
+- Restored a green OpenAI availability indicator
+- Added a green status dot to the compact OpenAI sidebar title
+- Changed Knowledge Archive placeholder to `e.g. apoptotic stress`
+- Replaced API-oriented Archive helper copy with learner-oriented guidance
+
 ## [0.6.2-open-beta] - 2026-09-12
 
 ### Sidebar Studio

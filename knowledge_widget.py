@@ -364,7 +364,7 @@ def render_knowledge_archive_widget(
                         "Term / phrase",
                     ),
                     placeholder=(
-                        "apoptotic stress"
+                        "e.g. apoptotic stress"
                     ),
                     key=_input_key(),
                 )
@@ -604,8 +604,8 @@ def render_knowledge_archive_widget(
                 st.caption(
                     _L(
                         lang,
-                        "검색은 API를 사용하지 않습니다. Archive MISS만 원할 때 AI로 생성할 수 있습니다.",
-                        "Search uses no AI API. Only Archive MISSes can be generated on demand.",
+                        "이해가 필요한 용어를 검색해보세요.",
+                        "Search for a term you want to understand.",
                     )
                 )
                 return
