@@ -162,127 +162,112 @@ def _edit_language(
         expanded=True,
     ):
         content[
-            "hero_title"
-        ] = _text_area(
-            "메인 제목",
+            "home_brand_title"
+        ] = _text_input(
+            "브랜드 제목",
             content.get(
-                "hero_title",
-                "",
+                "home_brand_title",
+                "LALSTUDY",
             ),
-            f"{lang_key}_hero_title",
-            height=120,
+            f"{lang_key}_home_brand_title",
         )
 
         content[
-            "hero_subtitle"
-        ] = _text_area(
-            "설명",
+            "home_kicker"
+        ] = _text_input(
+            "상단 한 줄",
             content.get(
-                "hero_subtitle",
+                "home_kicker",
                 "",
             ),
-            f"{lang_key}_hero_subtitle",
-            height=110,
+            f"{lang_key}_home_kicker",
+        )
+
+        content[
+            "home_description"
+        ] = _text_area(
+            "제품 설명",
+            content.get(
+                "home_description",
+                "",
+            ),
+            f"{lang_key}_home_description",
+            height=120,
         )
 
         c1, c2 = st.columns(2)
 
         with c1:
             content[
-                "paper_button"
+                "home_primary_cta"
             ] = _text_input(
-                "논문 버튼",
+                "논문 CTA",
                 content.get(
-                    "paper_button",
+                    "home_primary_cta",
                     "",
                 ),
-                f"{lang_key}_paper_button",
+                f"{lang_key}_home_primary_cta",
             )
 
         with c2:
             content[
-                "method_button"
+                "home_secondary_cta"
             ] = _text_input(
-                "Method 버튼",
+                "Method CTA",
                 content.get(
-                    "method_button",
+                    "home_secondary_cta",
                     "",
                 ),
-                f"{lang_key}_method_button",
+                f"{lang_key}_home_secondary_cta",
             )
 
     with st.expander(
-        "② Feature cards",
+        "② Product cards",
     ):
-        content[
-            "feature_section_title"
-        ] = _text_input(
-            "섹션 제목",
-            content.get(
-                "feature_section_title",
-                "",
+        feature_fields = [
+            (
+                "Learn a Paper",
+                "home_feature_learn_title",
+                "home_feature_learn_text",
             ),
-            f"{lang_key}_feature_section_title",
-        )
-
-        content[
-            "feature_section_subtitle"
-        ] = _text_area(
-            "섹션 설명",
-            content.get(
-                "feature_section_subtitle",
-                "",
+            (
+                "Knowledge Archive",
+                "home_feature_archive_title",
+                "home_feature_archive_text",
             ),
-            f"{lang_key}_feature_section_subtitle",
-            height=75,
-        )
+            (
+                "Method Wiki",
+                "home_feature_method_title",
+                "home_feature_method_text",
+            ),
+        ]
 
-        for index in range(
-            1,
-            5,
-        ):
+        for label_text, title_key, text_key in feature_fields:
             st.markdown(
-                f"**Card {index}**"
+                f"**{label_text}**"
             )
-
-            a, b = st.columns(
-                [0.25, 0.75]
-            )
-
-            with a:
-                content[
-                    f"feature_{index}_icon"
-                ] = _text_input(
-                    "Icon",
-                    content.get(
-                        f"feature_{index}_icon",
-                        "",
-                    ),
-                    f"{lang_key}_feature_{index}_icon",
-                )
-
-            with b:
-                content[
-                    f"feature_{index}_title"
-                ] = _text_input(
-                    "제목",
-                    content.get(
-                        f"feature_{index}_title",
-                        "",
-                    ),
-                    f"{lang_key}_feature_{index}_title",
-                )
 
             content[
-                f"feature_{index}_text"
+                title_key
+            ] = _text_input(
+                "제목",
+                content.get(
+                    title_key,
+                    label_text,
+                ),
+                f"{lang_key}_{title_key}",
+            )
+
+            content[
+                text_key
             ] = _text_area(
                 "설명",
                 content.get(
-                    f"feature_{index}_text",
+                    text_key,
                     "",
                 ),
-                f"{lang_key}_feature_{index}_text",
-                height=78,
+                f"{lang_key}_{text_key}",
+                height=80,
             )
 
     with st.expander(
@@ -677,6 +662,10 @@ def _edit_sidebar(
         "🧭 사이드바",
         expanded=True,
     ):
+        st.caption(
+            "공개 페이지의 공통 사이드바입니다."
+        )
+
         c1, c2 = st.columns(2)
 
         with c1:
@@ -783,6 +772,10 @@ def _edit_sidebar(
             key=WIDGET_PREFIX
             + "sidebar_openai_detail",
         ) or "minimal"
+
+        st.caption(
+            "기본값은 Knowledge Archive를 위에 두고 OpenAI는 접힌 최소 표시입니다."
+        )
 
     return sidebar
 
