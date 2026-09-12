@@ -31,7 +31,7 @@ from method_wiki import (
 from openai_sidebar import render_openai_usage_panel
 
 
-APP_VERSION = "v0.5.1.1-beta"
+APP_VERSION = "v0.5.2-beta"
 
 DATA_FILE = Path("method_profiles.json")
 IMAGE_INDEX_FILE = Path("figure_images.json")
@@ -703,14 +703,38 @@ def method_visual_svg(
         )[:2]
     ]
 
-    principle = [
+    core_principle = [
         facet_label(
-            "principle",
+            "core_principle",
             key,
             lang,
         )
         for key in facets.get(
-            "principle",
+            "core_principle",
+            [],
+        )[:2]
+    ]
+
+    detection = [
+        facet_label(
+            "detection",
+            key,
+            lang,
+        )
+        for key in facets.get(
+            "detection",
+            [],
+        )[:2]
+    ]
+
+    labeling = [
+        facet_label(
+            "labeling",
+            key,
+            lang,
+        )
+        for key in facets.get(
+            "labeling",
             [],
         )[:2]
     ]
@@ -743,15 +767,29 @@ def method_visual_svg(
 
     p2 = html.escape(
         text_value(
-            principle,
-            "Measurement",
+            core_principle,
+            "Core principle",
         )
     )
 
     p3 = html.escape(
         text_value(
+            detection,
+            "Detection",
+        )
+    )
+
+    p4 = html.escape(
+        text_value(
             output,
             "Readout",
+        )
+    )
+
+    label_text = html.escape(
+        text_value(
+            labeling,
+            "Labeling varies",
         )
     )
 
@@ -763,52 +801,69 @@ def method_visual_svg(
     )
 
     svg = f"""
-    <svg xmlns="http://www.w3.org/2000/svg" width="720" height="430"
-         viewBox="0 0 720 430">
-      <rect width="720" height="430" rx="28" fill="#f7f9fc"/>
-      <rect x="34" y="32" width="652" height="366" rx="22"
+    <svg xmlns="http://www.w3.org/2000/svg" width="780" height="470"
+         viewBox="0 0 780 470">
+      <rect width="780" height="470" rx="28" fill="#f7f9fc"/>
+      <rect x="34" y="30" width="712" height="404" rx="22"
             fill="#ffffff" stroke="#dfe5ec"/>
 
-      <text x="62" y="78" font-family="Arial, sans-serif"
+      <text x="62" y="74" font-family="Arial, sans-serif"
             font-size="18" font-weight="700" fill="#172033">{title}</text>
-      <text x="62" y="107" font-family="Arial, sans-serif"
+      <text x="62" y="103" font-family="Arial, sans-serif"
             font-size="14" fill="#657083">{purpose_text}</text>
 
-      <circle cx="132" cy="225" r="62" fill="#e8f2ff" stroke="#9fc3f4" stroke-width="2"/>
-      <circle cx="360" cy="225" r="62" fill="#edf8ef" stroke="#a9d7b1" stroke-width="2"/>
-      <circle cx="588" cy="225" r="62" fill="#fff4df" stroke="#edc97d" stroke-width="2"/>
+      <circle cx="115" cy="235" r="54" fill="#e8f2ff" stroke="#9fc3f4" stroke-width="2"/>
+      <circle cx="300" cy="235" r="54" fill="#edf8ef" stroke="#a9d7b1" stroke-width="2"/>
+      <circle cx="485" cy="235" r="54" fill="#f4efff" stroke="#c7b6ea" stroke-width="2"/>
+      <circle cx="670" cy="235" r="54" fill="#fff4df" stroke="#edc97d" stroke-width="2"/>
 
-      <path d="M200 225 L286 225" stroke="#8b97a8" stroke-width="5"
-            stroke-linecap="round"/>
-      <path d="M428 225 L514 225" stroke="#8b97a8" stroke-width="5"
-            stroke-linecap="round"/>
+      <path d="M173 235 L242 235" stroke="#8b97a8" stroke-width="5" stroke-linecap="round"/>
+      <path d="M358 235 L427 235" stroke="#8b97a8" stroke-width="5" stroke-linecap="round"/>
+      <path d="M543 235 L612 235" stroke="#8b97a8" stroke-width="5" stroke-linecap="round"/>
 
-      <polygon points="286,225 270,216 270,234" fill="#8b97a8"/>
-      <polygon points="514,225 498,216 498,234" fill="#8b97a8"/>
+      <polygon points="242,235 228,227 228,243" fill="#8b97a8"/>
+      <polygon points="427,235 413,227 413,243" fill="#8b97a8"/>
+      <polygon points="612,235 598,227 598,243" fill="#8b97a8"/>
 
-      <text x="132" y="218" text-anchor="middle"
-            font-family="Arial, sans-serif" font-size="14"
-            font-weight="700" fill="#253044">INPUT</text>
-      <text x="132" y="242" text-anchor="middle"
+      <text x="115" y="228" text-anchor="middle"
             font-family="Arial, sans-serif" font-size="13"
+            font-weight="700" fill="#253044">TARGET</text>
+      <text x="115" y="250" text-anchor="middle"
+            font-family="Arial, sans-serif" font-size="12"
             fill="#455268">{p1}</text>
 
-      <text x="360" y="218" text-anchor="middle"
-            font-family="Arial, sans-serif" font-size="14"
-            font-weight="700" fill="#253044">PRINCIPLE</text>
-      <text x="360" y="242" text-anchor="middle"
+      <text x="300" y="228" text-anchor="middle"
             font-family="Arial, sans-serif" font-size="13"
+            font-weight="700" fill="#253044">CORE</text>
+      <text x="300" y="250" text-anchor="middle"
+            font-family="Arial, sans-serif" font-size="12"
             fill="#455268">{p2}</text>
 
-      <text x="588" y="218" text-anchor="middle"
-            font-family="Arial, sans-serif" font-size="14"
-            font-weight="700" fill="#253044">OUTPUT</text>
-      <text x="588" y="242" text-anchor="middle"
+      <text x="485" y="228" text-anchor="middle"
             font-family="Arial, sans-serif" font-size="13"
+            font-weight="700" fill="#253044">DETECTION</text>
+      <text x="485" y="250" text-anchor="middle"
+            font-family="Arial, sans-serif" font-size="12"
             fill="#455268">{p3}</text>
 
-      <text x="62" y="352" font-family="Arial, sans-serif"
-            font-size="12" fill="#8a94a3">LALSTUDY Method Map</text>
+      <text x="670" y="228" text-anchor="middle"
+            font-family="Arial, sans-serif" font-size="13"
+            font-weight="700" fill="#253044">OUTPUT</text>
+      <text x="670" y="250" text-anchor="middle"
+            font-family="Arial, sans-serif" font-size="12"
+            fill="#455268">{p4}</text>
+
+      <rect x="205" y="325" width="370" height="52" rx="14"
+            fill="#fbfcfe" stroke="#e0e5eb"/>
+      <text x="390" y="347" text-anchor="middle"
+            font-family="Arial, sans-serif" font-size="12"
+            font-weight="700" fill="#657083">LABELING / RECOGNITION</text>
+      <text x="390" y="366" text-anchor="middle"
+            font-family="Arial, sans-serif" font-size="12"
+            fill="#455268">{label_text}</text>
+
+      <text x="62" y="407" font-family="Arial, sans-serif"
+            font-size="12" fill="#8a94a3">LALSTUDY Method Map · Taxonomy V2</text>
     </svg>
     """
 
@@ -1088,8 +1143,8 @@ if not selected_method:
     st.caption(
         L(
             lang,
-            "실험기법을 이름으로 검색하거나, 목적·대상·원리·결과 형태로 탐색하세요.",
-            "Search an experimental method by name, or browse by purpose, material, principle, and output.",
+            "실험기법을 이름으로 검색하거나, 목적·대상·핵심 원리·검출·표지·결과로 탐색하세요.",
+            "Search an experimental method by name, or browse by purpose, material, core principle, detection, labeling, and output.",
         )
     )
 
@@ -1157,15 +1212,17 @@ if not selected_method:
     st.caption(
         L(
             lang,
-            "여러 조건을 동시에 고를 수 있습니다. 같은 항목 안에서는 OR, 서로 다른 항목 사이는 AND로 검색합니다. 예: 목적=세포 증식·생존 + 대상=단백질/세포.",
-            "Combine multiple filters. Values inside one facet use OR; different facets use AND. Example: purpose=proliferation/viability + material=protein/cell.",
+            "핵심 원리는 실험의 본질, 검출 방식은 신호를 읽는 법, 표지 방식은 target을 표시하는 대표적 방법입니다. 같은 항목 안에서는 OR, 서로 다른 항목 사이는 AND입니다.",
+            "Core principle describes what fundamentally defines the assay; detection describes how the signal is read; labeling describes common ways the target is marked. OR within a facet, AND across facets.",
         )
     )
 
     facet_order = [
         "purpose",
         "material",
-        "principle",
+        "core_principle",
+        "detection",
+        "labeling",
         "output",
     ]
 
@@ -1203,7 +1260,7 @@ if not selected_method:
                     + 1
                 )
 
-    facet_cols = st.columns(2)
+    facet_cols = st.columns(3)
     selected_facets = {}
 
     for idx, facet in enumerate(
@@ -1228,7 +1285,7 @@ if not selected_method:
         ]
 
         with facet_cols[
-            idx % 2
+            idx % 3
         ]:
             selected_facets[
                 facet
@@ -1432,7 +1489,9 @@ chip_parts = []
 for facet in (
     "purpose",
     "material",
-    "principle",
+    "core_principle",
+    "detection",
+    "labeling",
     "output",
 ):
     for key in facets.get(
@@ -1453,6 +1512,15 @@ if chip_parts:
             chip_parts
         )
     )
+
+
+st.caption(
+    L(
+        lang,
+        "분류 기준: 핵심 원리는 실험의 본질, 검출 방식은 신호를 읽는 법, 표지 방식은 선택적/대표적 target 표시법입니다.",
+        "Taxonomy: core principle defines the assay; detection is how the signal is read; labeling is an optional/common way to mark the target.",
+    )
+)
 
 
 # ============================================================
@@ -1506,7 +1574,7 @@ if db_entry:
         )
 
         # Quick taxonomy, separated from prose.
-        quick_cols = st.columns(2)
+        quick_cols = st.columns(3)
 
         quick_items = [
             (
@@ -1540,15 +1608,45 @@ if db_entry:
                 or "-",
             ),
             (
-                L(lang, "원리", "Principle"),
+                L(lang, "핵심 원리", "Core principle"),
                 ", ".join(
                     facet_label(
-                        "principle",
+                        "core_principle",
                         key,
                         lang,
                     )
                     for key in facets.get(
-                        "principle",
+                        "core_principle",
+                        [],
+                    )[:3]
+                )
+                or "-",
+            ),
+            (
+                L(lang, "검출 방식", "Detection"),
+                ", ".join(
+                    facet_label(
+                        "detection",
+                        key,
+                        lang,
+                    )
+                    for key in facets.get(
+                        "detection",
+                        [],
+                    )[:3]
+                )
+                or "-",
+            ),
+            (
+                L(lang, "표지 방식", "Labeling"),
+                ", ".join(
+                    facet_label(
+                        "labeling",
+                        key,
+                        lang,
+                    )
+                    for key in facets.get(
+                        "labeling",
                         [],
                     )[:3]
                 )
@@ -1578,7 +1676,7 @@ if db_entry:
             quick_items
         ):
             with quick_cols[
-                i % 2
+                i % 3
             ]:
                 st.markdown(
                     f"""
@@ -1606,8 +1704,8 @@ if db_entry:
             <div class="mw-visual-caption">
               {html.escape(L(
                   lang,
-                  "Method map · 대상 → 핵심 원리 → 결과를 단순화한 개념도",
-                  "Method map · simplified input → principle → output view",
+                  "Method map · 대상 → 핵심 원리 → 검출 방식 → 결과, 표지 방식은 별도 표시",
+                  "Method map · target → core principle → detection → output, with labeling shown separately",
               ))}
             </div>
             """,

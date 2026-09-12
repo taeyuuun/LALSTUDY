@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.5.2-beta] - 2026-09-12
+
+### Method Taxonomy V2
+- Split the old `principle` facet into `core_principle`, `detection`, and `labeling`
+- Corrected Flow cytometry taxonomy: Cytometry is core; fluorescence/antibody are detection/labeling modes
+- Legacy taxonomy-v1 DB facets are ignored unless explicitly marked v2
+- Expanded Method Wiki browsing from 4 to 6 scientific facets
+- Redesigned Method Map as Target -> Core -> Detection -> Output with labeling shown separately
+
 ## [0.5.1.1-beta] - 2026-09-12
 
 ### Method Wiki schema hotfix
