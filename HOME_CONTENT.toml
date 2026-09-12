@@ -37,19 +37,6 @@ openai_detail = "minimal"
 order = "knowledge_first"
 
 [ko]
-# Branded Home v2
-home_brand_title = "LALSTUDY"
-home_kicker = "논문을 읽고, 연구를 이해하는 하나의 흐름"
-home_description = "LALSTUDY는 생명과학 논문을 분석하고 학습하는 도구입니다. PDF 한 편에서 연구의 핵심 논리와 Figure를 파악하고, 이해가 필요한 개념과 실제 실험기법까지 이어서 학습할 수 있습니다."
-home_primary_cta = "📄 논문 분석 시작하기"
-home_secondary_cta = "🧬 실험기법 찾아보기"
-home_feature_learn_title = "Learn a Paper"
-home_feature_learn_text = "PDF 한 편의 핵심 논리, Figure, 실험전략을 단계적으로 읽습니다."
-home_feature_archive_title = "Knowledge Archive"
-home_feature_archive_text = "논문을 읽다가 막힌 용어·구절을 찾아보고 저장해 다시 꺼내봅니다."
-home_feature_method_title = "Method Wiki"
-home_feature_method_text = "실험기법의 원리와 해석법을 배우고, 실제 논문 Figure·panel 사용 사례까지 연결합니다."
-
 hero_title = "논문을 읽고,\nFigure를 이해하고,\n실험기법까지 연결하세요."
 hero_subtitle = "LALSTUDY는 논문 요약에서 끝나지 않습니다. 연구의 핵심 논리, Figure, 배경개념과 실제 실험기법을 하나의 학습 흐름으로 연결합니다."
 
@@ -94,19 +81,6 @@ open_beta_note = "현재 corpus 기반 탐색은 면역학 관련 키워드로 �
 about_link = "LALSTUDY에 대해 더 알아보기 →"
 
 [en]
-# Branded Home v2
-home_brand_title = "LALSTUDY"
-home_kicker = "One flow from reading papers to understanding research"
-home_description = "LALSTUDY is a learning tool for analyzing life-science papers. Start from one PDF, understand the study logic and Figures, then continue into the concepts and experimental methods you need."
-home_primary_cta = "📄 Analyze a paper"
-home_secondary_cta = "🧬 Explore methods"
-home_feature_learn_title = "Learn a Paper"
-home_feature_learn_text = "Read one PDF through its core logic, Figures, and experimental strategy."
-home_feature_archive_title = "Knowledge Archive"
-home_feature_archive_text = "Look up unfamiliar terms, save them, and reuse them while reading future papers."
-home_feature_method_title = "Method Wiki"
-home_feature_method_text = "Learn method principles and interpretation, then connect them to real paper Figures and panels."
-
 hero_title = "Read the paper.\nUnderstand the Figure.\nConnect the experiment."
 hero_subtitle = "LALSTUDY goes beyond paper summarization. It connects a study's core logic, Figures, prerequisite concepts, and real experimental methods into one learning flow."
 
