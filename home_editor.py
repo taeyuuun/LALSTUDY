@@ -677,10 +677,6 @@ def _edit_sidebar(
         "🧭 사이드바",
         expanded=True,
     ):
-        st.caption(
-            "공개 페이지의 공통 사이드바입니다."
-        )
-
         c1, c2 = st.columns(2)
 
         with c1:
@@ -787,10 +783,6 @@ def _edit_sidebar(
             key=WIDGET_PREFIX
             + "sidebar_openai_detail",
         ) or "minimal"
-
-        st.caption(
-            "기본값은 Knowledge Archive를 위에 두고 OpenAI는 접힌 최소 표시입니다."
-        )
 
     return sidebar
 

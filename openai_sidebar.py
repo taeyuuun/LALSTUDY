@@ -1,12 +1,22 @@
+"""Canonical OpenAI sidebar UI.
+
+Architecture:
+- ai_provider.py: OpenAI keys/readiness/state
+- openai_usage_sync.py: official usage retrieval
+- openai_sidebar.py: OpenAI sidebar rendering
+"""
+
+from __future__ import annotations
+
 import streamlit as st
 
 from ai_provider import (
-    get_openai_admin_key,
-    openai_ready,
     OPENAI_REFRESH_NONCE_KEY,
+    get_openai_admin_key,
+    openai_daily_budget,
+    openai_ready,
 )
 from openai_usage_sync import fetch_openai_official_usage
-from ai_provider import openai_daily_budget
 
 
 def _L(lang: str, ko: str, en: str) -> str:
@@ -15,6 +25,7 @@ def _L(lang: str, ko: str, en: str) -> str:
 
 def _official_snapshot() -> dict:
     admin_key = get_openai_admin_key()
+
     if not admin_key:
         return {
             "ok": False,
@@ -22,7 +33,14 @@ def _official_snapshot() -> dict:
             "error": "OPENAI_ADMIN_KEY is not configured.",
         }
 
-    nonce = int(st.session_state.get(OPENAI_REFRESH_NONCE_KEY, 0) or 0)
+    nonce = int(
+        st.session_state.get(
+            OPENAI_REFRESH_NONCE_KEY,
+            0,
+        )
+        or 0
+    )
+
     return fetch_openai_official_usage(
         admin_key=admin_key,
         daily_budget=openai_daily_budget(),
@@ -30,133 +48,126 @@ def _official_snapshot() -> dict:
     )
 
 
-def render_openai_usage_panel(*, lang: str = "ko") -> None:
-    """Official-only OpenAI usage UI.
+def render_openai_usage_panel(
+    *,
+    lang: str = "ko",
+    expanded: bool = False,
+    detail: str = "minimal",
+    show_divider: bool = False,  # compatibility only; intentionally unused
+) -> None:
+    """Compact public OpenAI widget with no developer/debug copy."""
 
-    Rules for this panel:
-    - Never show app-estimated remaining quota.
-    - Never use st.metric or multi-column number cards in the narrow sidebar.
-    - Show complimentary remaining tokens only when the official Usage API
-      actually exposes the data-sharing incentive service tier.
-    """
+    ready = openai_ready()
     official = _official_snapshot()
 
+    title = (
+        "🟢 OpenAI Usage"
+        if ready
+        else "⚪ OpenAI Usage"
+    )
+
     with st.sidebar:
-        with st.expander("🤖 OpenAI Usage", expanded=True):
-            if openai_ready():
+        with st.expander(
+            title,
+            expanded=expanded,
+        ):
+            if ready:
                 st.success("OpenAI READY")
             else:
                 st.error(
                     _L(
                         lang,
-                        "OPENAI_API_KEY 또는 OpenAI SDK가 준비되지 않았습니다.",
-                        "OPENAI_API_KEY or the OpenAI SDK is not ready.",
+                        "OpenAI 연결 필요",
+                        "OpenAI connection required",
                     )
                 )
-
-            st.caption(
-                _L(
-                    lang,
-                    "LALSTUDY의 모든 AI 분석은 OpenAI를 사용합니다.",
-                    "All LALSTUDY AI analysis uses OpenAI.",
-                )
-            )
+                return
 
             if official.get("ok"):
-                total_tokens = int(official.get("total_tokens", 0) or 0)
-                total_requests = int(official.get("total_requests", 0) or 0)
-                cost = official.get("today_cost_usd")
+                total_tokens = int(
+                    official.get(
+                        "total_tokens",
+                        0,
+                    )
+                    or 0
+                )
+                total_requests = int(
+                    official.get(
+                        "total_requests",
+                        0,
+                    )
+                    or 0
+                )
+                cost = official.get(
+                    "today_cost_usd"
+                )
 
-                st.divider()
+                cost_text = (
+                    f" · ${float(cost):.4f}"
+                    if cost is not None
+                    else ""
+                )
 
-                # Compact text-only layout: no st.metric, no columns, no giant digits.
                 st.markdown(
                     f"""
-<div style="font-size:0.92rem; line-height:1.25;">
-  <div style="opacity:0.72;">{_L(lang, '오늘 공식 사용량', 'Official usage today')}</div>
+<div style="font-size:0.92rem; line-height:1.20; margin:0; padding:0;">
   <div><strong>{total_tokens:,} tokens</strong></div>
-  <div style="margin-top:0.10rem; opacity:0.82;">
-    {_L(lang, '요청', 'Requests')} {total_requests:,}
-    {(' · ' + _L(lang, '오늘 과금', 'Cost today') + ' $' + format(float(cost), '.4f')) if cost is not None else ''}
+  <div style="margin-top:0.05rem; opacity:0.82;">
+    {_L(lang, '요청', 'Requests')} {total_requests:,}{cost_text}
   </div>
 </div>
 """,
                     unsafe_allow_html=True,
                 )
 
-                # Only show free-token balance when the official service tier is visible.
-                if bool(official.get("complimentary_exact")):
-                    used = int(official.get("complimentary_used_tokens", 0) or 0)
-                    remaining = official.get("complimentary_remaining_tokens")
-                    budget = int(official.get("daily_budget", 0) or 0)
-
-                    st.divider()
-                    st.caption(
-                        _L(
-                            lang,
-                            "무료 토큰 · 공식 incentive tier",
-                            "Complimentary tokens · official incentive tier",
+                if (
+                    detail == "compact"
+                    and bool(
+                        official.get(
+                            "complimentary_exact"
                         )
                     )
-
+                ):
+                    remaining = official.get(
+                        "complimentary_remaining_tokens"
+                    )
                     if remaining is not None:
-                        st.markdown(
-                            f"""
-<div style="font-size:0.92rem; line-height:1.25;">
-  <div>{_L(lang, '사용', 'Used')} <strong>{used:,}</strong> tokens</div>
-  <div>{_L(lang, '잔여', 'Remaining')} <strong>{int(remaining):,}</strong> tokens</div>
-</div>
-""",
-                            unsafe_allow_html=True,
+                        st.caption(
+                            _L(
+                                lang,
+                                f"무료 잔여 {int(remaining):,} tokens",
+                                f"Complimentary {int(remaining):,} tokens left",
+                            )
                         )
-
-                    if budget > 0:
-                        st.progress(min(max(used / budget, 0.0), 1.0))
-                else:
-                    # Deliberately omit any estimated complimentary balance.
-                    st.caption(
-                        _L(
-                            lang,
-                            "🟢 공식 Usage sync 완료",
-                            "🟢 Official Usage sync complete",
-                        )
-                    )
-
-                synced = official.get("synced_at_utc")
-                if synced:
-                    st.caption(f"sync · {synced} UTC")
 
                 if st.button(
-                    _L(lang, "↻ 공식 usage 새로고침", "↻ Refresh official usage"),
-                    key="lal_refresh_openai_official_usage_v0412",
-                    use_container_width=True,
+                    "↻",
+                    key="lal_refresh_openai_usage_v063",
+                    help=_L(
+                        lang,
+                        "사용량 새로고침",
+                        "Refresh usage",
+                    ),
                 ):
-                    st.session_state[OPENAI_REFRESH_NONCE_KEY] = (
-                        int(st.session_state.get(OPENAI_REFRESH_NONCE_KEY, 0) or 0) + 1
+                    st.session_state[
+                        OPENAI_REFRESH_NONCE_KEY
+                    ] = (
+                        int(
+                            st.session_state.get(
+                                OPENAI_REFRESH_NONCE_KEY,
+                                0,
+                            )
+                            or 0
+                        )
+                        + 1
                     )
                     st.rerun()
 
-            else:
-                # No estimates. If official sync is unavailable, say only that.
-                st.divider()
-                if not get_openai_admin_key():
-                    st.caption(
-                        _L(
-                            lang,
-                            "공식 usage 표시에는 OPENAI_ADMIN_KEY가 필요합니다.",
-                            "OPENAI_ADMIN_KEY is required for official usage display.",
-                        )
+            elif detail == "compact":
+                st.caption(
+                    _L(
+                        lang,
+                        "공식 사용량을 불러올 수 없습니다.",
+                        "Official usage is unavailable.",
                     )
-                else:
-                    st.caption(
-                        _L(
-                            lang,
-                            "공식 usage를 불러오지 못했습니다.",
-                            "Official usage could not be loaded.",
-                        )
-                    )
-                    with st.expander(_L(lang, "오류 보기", "View error"), expanded=False):
-                        st.code(str(official.get("error", "Unknown error")))
-
-            # Visible deployment marker so stale UI is obvious immediately.
-            st.caption("usage UI · v0.4.1.2")
+                )
