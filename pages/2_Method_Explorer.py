@@ -34,7 +34,7 @@ from method_taxonomy_v2 import (
 from openai_sidebar import render_openai_usage_panel
 
 
-APP_VERSION = "v0.5.2.2-beta"
+APP_VERSION = "v0.5.4-beta"
 
 DATA_FILE = Path("method_profiles.json")
 IMAGE_INDEX_FILE = Path("figure_images.json")
@@ -2141,6 +2141,721 @@ if co_methods:
                     st.rerun()
 
 
+
+def normalize_figure_label(value):
+    """
+    Human-readable Figure label for paper cards.
+
+    Existing corpus values are usually already `Fig. 1`, `Fig. 2`, etc.
+    This helper keeps those intact and safely normalizes shorter variants.
+    """
+    value = str(value or "").strip()
+
+    if not value:
+        return ""
+
+    lower = value.casefold()
+
+    if lower.startswith("fig."):
+        return value
+
+    if lower.startswith("figure"):
+        suffix = value[len("figure"):].strip(" .")
+        return f"Fig. {suffix}" if suffix else value
+
+    if lower.startswith("fig"):
+        suffix = value[len("fig"):].strip(" .")
+        return f"Fig. {suffix}" if suffix else value
+
+    return value
+
+
+def paper_figure_labels(paper, figures=None):
+    """
+    Return unique Figure labels linked to the selected method in this paper.
+
+    If `figures` is supplied, use that subset (e.g. keyword-matched figures).
+    Otherwise use every Figure linked to this method in the paper.
+    """
+    source = (
+        figures
+        if figures is not None
+        else (
+            paper.get(
+                "figures",
+                [],
+            )
+            or []
+        )
+    )
+
+    labels = []
+
+    for fig in source:
+        label = normalize_figure_label(
+            fig.get(
+                "figure",
+                "",
+            )
+        )
+
+        if label and label not in labels:
+            labels.append(label)
+
+    return labels
+
+
+def figure_index_text(labels, lang):
+    if not labels:
+        return (
+            "연결 Figure 없음"
+            if lang == "ko"
+            else "No linked Figures"
+        )
+
+    if len(labels) <= 5:
+        return ", ".join(labels)
+
+    visible = ", ".join(labels[:5])
+    remainder = len(labels) - 5
+
+    return (
+        f"{visible} 외 {remainder}개"
+        if lang == "ko"
+        else f"{visible} +{remainder} more"
+    )
+
+
+def paper_panel_index(
+    figures,
+    profile,
+    lang,
+):
+    labels = []
+
+    for figure in (
+        figures
+        or []
+    ):
+        value = figure_panel_index_text(
+            figure,
+            profile,
+        )
+
+        if (
+            value
+            and value
+            not in labels
+        ):
+            labels.append(
+                value
+            )
+
+    return figure_index_text(
+        labels,
+        lang,
+    )
+
+
+
+# ============================================================
+# Panel-level method usage map
+# ============================================================
+
+PANEL_MARKER_RE = re.compile(
+    r"""
+    \(
+        (?P<labels>
+            [A-Z]
+            (?:
+                \s*(?:[-–—]|to|and|,|&)\s*[A-Z]
+            )*
+        )
+    \)
+    """,
+    re.VERBOSE,
+)
+
+
+def expand_panel_labels(raw_labels):
+    """
+    Examples:
+    A -> ["A"]
+    A-C -> ["A", "B", "C"]
+    A–C -> ["A", "B", "C"]
+    A and B -> ["A", "B"]
+    A, C -> ["A", "C"]
+    """
+
+    raw = str(
+        raw_labels
+        or ""
+    ).strip().upper()
+
+    if not raw:
+        return []
+
+    range_match = re.fullmatch(
+        r"([A-Z])\s*(?:[-–—]|TO)\s*([A-Z])",
+        raw,
+        flags=re.IGNORECASE,
+    )
+
+    if range_match:
+        start = ord(
+            range_match.group(1).upper()
+        )
+        end = ord(
+            range_match.group(2).upper()
+        )
+
+        if start <= end:
+            return [
+                chr(code)
+                for code in range(
+                    start,
+                    end + 1,
+                )
+            ]
+
+    tokens = re.split(
+        r"\s*(?:,|AND|&)\s*",
+        raw,
+        flags=re.IGNORECASE,
+    )
+
+    labels = []
+
+    for token in tokens:
+        token = token.strip()
+
+        nested_range = re.fullmatch(
+            r"([A-Z])\s*(?:[-–—]|TO)\s*([A-Z])",
+            token,
+            flags=re.IGNORECASE,
+        )
+
+        if nested_range:
+            a = ord(
+                nested_range.group(1).upper()
+            )
+            b = ord(
+                nested_range.group(2).upper()
+            )
+
+            if a <= b:
+                labels.extend(
+                    chr(code)
+                    for code in range(
+                        a,
+                        b + 1,
+                    )
+                )
+
+        elif re.fullmatch(
+            r"[A-Z]",
+            token,
+        ):
+            labels.append(
+                token
+            )
+
+    # Preserve order, remove duplicates.
+    output = []
+
+    for label in labels:
+        if label not in output:
+            output.append(
+                label
+            )
+
+    return output
+
+
+def normalize_match_text(value):
+    value = str(
+        value
+        or ""
+    ).casefold()
+
+    value = re.sub(
+        r"[^a-z0-9가-힣]+",
+        " ",
+        value,
+    )
+
+    return re.sub(
+        r"\s+",
+        " ",
+        value,
+    ).strip()
+
+
+def method_match_terms(profile):
+    """
+    Use the canonical name and curated aliases only.
+    This keeps panel assignment grounded in the Figure caption rather than
+    inventing method-specific synonyms on the fly.
+    """
+
+    raw_terms = [
+        profile.get(
+            "name",
+            "",
+        ),
+        *(
+            profile.get(
+                "aliases",
+                [],
+            )
+            or []
+        ),
+    ]
+
+    terms = []
+
+    for term in raw_terms:
+        normalized = normalize_match_text(
+            term
+        )
+
+        if (
+            normalized
+            and normalized
+            not in terms
+        ):
+            terms.append(
+                normalized
+            )
+
+    return terms
+
+
+def caption_mentions_method(
+    text,
+    profile,
+):
+    normalized_text = normalize_match_text(
+        text
+    )
+
+    if not normalized_text:
+        return False
+
+    for term in method_match_terms(
+        profile
+    ):
+        if term in normalized_text:
+            return True
+
+    return False
+
+
+def split_caption_into_panels(
+    caption,
+):
+    """
+    Split a Figure legend into:
+    - preamble before first panel marker
+    - panel chunks keyed by A/B/C...
+
+    A range marker like (A-C) is attached to A, B and C using the same caption
+    chunk because the source caption itself groups those panels together.
+    """
+
+    caption = str(
+        caption
+        or ""
+    ).strip()
+
+    matches = list(
+        PANEL_MARKER_RE.finditer(
+            caption
+        )
+    )
+
+    if not matches:
+        return {
+            "preamble": caption,
+            "panels": [],
+        }
+
+    preamble = caption[
+        :matches[0].start()
+    ].strip()
+
+    panels = []
+
+    for index, match in enumerate(
+        matches
+    ):
+        end = (
+            matches[
+                index + 1
+            ].start()
+            if index + 1
+            < len(matches)
+            else len(caption)
+        )
+
+        body = caption[
+            match.end():end
+        ].strip(
+            " .;:-"
+        )
+
+        labels = expand_panel_labels(
+            match.group(
+                "labels"
+            )
+        )
+
+        if not labels:
+            continue
+
+        panels.append(
+            {
+                "labels": labels,
+                "raw_label": match.group(
+                    "labels"
+                ).strip(),
+                "text": body,
+            }
+        )
+
+    return {
+        "preamble": preamble,
+        "panels": panels,
+    }
+
+
+def concise_panel_text(
+    text,
+    max_chars=360,
+):
+    text = re.sub(
+        r"\s+",
+        " ",
+        str(
+            text
+            or ""
+        ),
+    ).strip()
+
+    if len(text) <= max_chars:
+        return text
+
+    shortened = text[
+        :max_chars
+    ].rsplit(
+        " ",
+        1,
+    )[0]
+
+    return shortened + "…"
+
+
+def panel_method_usage(
+    figure,
+    profile,
+):
+    """
+    Caption-grounded panel map.
+
+    status:
+    - explicit: method name/alias occurs in this panel chunk
+    - figure_context: method is named in the legend preamble and the panel
+      receives its description from that shared Figure-level context
+    - linked_only: the corpus links the Figure to the method, but the caption
+      does not explicitly assign the method to a specific panel
+    """
+
+    caption = str(
+        figure.get(
+            "caption",
+            "",
+        )
+        or ""
+    )
+
+    parsed = split_caption_into_panels(
+        caption
+    )
+
+    preamble = parsed[
+        "preamble"
+    ]
+
+    panels = parsed[
+        "panels"
+    ]
+
+    preamble_mentions = (
+        caption_mentions_method(
+            preamble,
+            profile,
+        )
+    )
+
+    usages = []
+
+    for panel in panels:
+        explicit = (
+            caption_mentions_method(
+                panel[
+                    "text"
+                ],
+                profile,
+            )
+        )
+
+        if explicit:
+            status = "explicit"
+        elif preamble_mentions:
+            status = "figure_context"
+        else:
+            continue
+
+        usages.append(
+            {
+                "labels": panel[
+                    "labels"
+                ],
+                "raw_label": panel[
+                    "raw_label"
+                ],
+                "status": status,
+                "text": concise_panel_text(
+                    panel[
+                        "text"
+                    ]
+                ),
+            }
+        )
+
+    # If the legend has panels but none explicitly maps the method,
+    # do not falsely claim a panel. Return linked_only and show the user that
+    # the evidence is Figure-level only.
+    if not usages:
+        return {
+            "mode": (
+                "linked_only"
+            ),
+            "preamble": concise_panel_text(
+                preamble,
+            ),
+            "usages": [],
+            "all_panels": [
+                label
+                for panel in panels
+                for label in panel[
+                    "labels"
+                ]
+            ],
+        }
+
+    return {
+        "mode": "panel_map",
+        "preamble": concise_panel_text(
+            preamble,
+        ),
+        "usages": usages,
+        "all_panels": [
+            label
+            for panel in panels
+            for label in panel[
+                "labels"
+            ]
+        ],
+    }
+
+
+def panel_usage_labels(
+    figure,
+    profile,
+):
+    mapping = panel_method_usage(
+        figure,
+        profile,
+    )
+
+    labels = []
+
+    for usage in mapping.get(
+        "usages",
+        [],
+    ):
+        for label in usage.get(
+            "labels",
+            [],
+        ):
+            if label not in labels:
+                labels.append(
+                    label
+                )
+
+    return labels
+
+
+def compact_panel_range(
+    labels,
+):
+    """
+    ["A","B","C"] -> "A-C"
+    ["A","C","F"] -> "A,C,F"
+    """
+
+    labels = [
+        label
+        for label in labels
+        if re.fullmatch(
+            r"[A-Z]",
+            str(label),
+        )
+    ]
+
+    if not labels:
+        return ""
+
+    codes = [
+        ord(label)
+        for label in labels
+    ]
+
+    if (
+        len(codes) >= 2
+        and codes
+        == list(
+            range(
+                codes[0],
+                codes[-1] + 1,
+            )
+        )
+    ):
+        return (
+            labels[0]
+            + "-"
+            + labels[-1]
+        )
+
+    return ",".join(
+        labels
+    )
+
+
+def figure_panel_index_text(
+    figure,
+    profile,
+):
+    fig_label = normalize_figure_label(
+        figure.get(
+            "figure",
+            "Figure",
+        )
+    )
+
+    panel_labels = (
+        panel_usage_labels(
+            figure,
+            profile,
+        )
+    )
+
+    if not panel_labels:
+        return fig_label
+
+    suffix = compact_panel_range(
+        panel_labels
+    )
+
+    return (
+        f"{fig_label}{suffix}"
+        if suffix
+        else fig_label
+    )
+
+
+def render_panel_method_usage(
+    figure,
+    profile,
+    lang,
+):
+    mapping = panel_method_usage(
+        figure,
+        profile,
+    )
+
+    usages = mapping.get(
+        "usages",
+        [],
+    )
+
+    if usages:
+        st.markdown(
+            L(
+                lang,
+                "##### 🔎 이 method가 쓰인 panel",
+                "##### 🔎 Panels using this method",
+            )
+        )
+
+        for usage in usages:
+            labels = ", ".join(
+                usage.get(
+                    "labels",
+                    [],
+                )
+            )
+
+            status = usage.get(
+                "status"
+            )
+
+            if status == "explicit":
+                evidence = L(
+                    lang,
+                    "caption에 method가 직접 명시됨",
+                    "method explicitly named in caption",
+                )
+            else:
+                evidence = L(
+                    lang,
+                    "Figure-level method 문맥",
+                    "Figure-level method context",
+                )
+
+            st.markdown(
+                f"**{labels}** · {evidence}"
+            )
+
+            text = usage.get(
+                "text",
+                "",
+            )
+
+            if text:
+                st.caption(
+                    text
+                )
+
+    else:
+        all_panels = mapping.get(
+            "all_panels",
+            [],
+        )
+
+        if all_panels:
+            st.caption(
+                L(
+                    lang,
+                    "이 Figure는 method와 연결되어 있지만 legend만으로 특정 panel을 확정할 수 없습니다. "
+                    "따라서 Figure-level 연결로만 표시합니다.",
+                    "This Figure is linked to the method, but the legend does not support a reliable panel-level assignment. "
+                    "It is therefore shown as a Figure-level link only.",
+                )
+            )
+
+
 # ============================================================
 # Existing paper / Figure corpus view
 # ============================================================
@@ -2158,8 +2873,8 @@ st.subheader(
 st.caption(
     L(
         lang,
-        "이 영역은 기존 corpus 연결 정보를 그대로 사용합니다. Method 설명 DB와 논문/Figure corpus는 분리되어 있습니다.",
-        "This section uses the existing corpus links. The method-description DB and the paper/Figure corpus remain separate.",
+        "각 논문에서 이 실험기법이 연결된 Figure와 가능한 경우 panel(A–F)까지 caption 근거로 표시합니다.",
+        "Each paper shows linked Figures and, when supported by the caption, the specific panels (A–F).",
     )
 )
 
@@ -2398,8 +3113,37 @@ for paper in filtered_papers[
         or []
     )
 
+    # When the user searches Figure captions, show the matching Figure
+    # numbers in the paper header. Otherwise show every Figure linked
+    # to this method in the paper.
+    header_figures = (
+        matching_figures
+        if (
+            keyword
+            and search_scope
+            in {"both", "caption"}
+            and matching_figures
+        )
+        else all_figures
+    )
+
+    linked_figure_labels = (
+        paper_figure_labels(
+            paper,
+            figures=header_figures,
+        )
+    )
+
+    linked_figure_text = (
+        paper_panel_index(
+            header_figures,
+            profile,
+            lang,
+        )
+    )
+
     with st.expander(
-        f"{title} ({year})"
+        f"{title} ({year}) · {linked_figure_text}"
     ):
         meta1, meta2 = (
             st.columns(2)
@@ -2412,6 +3156,40 @@ for paper in filtered_papers[
         meta2.write(
             f"**DOI:** {doi or '-'}"
         )
+
+        if linked_figure_labels:
+            linked_panel_items = [
+                figure_panel_index_text(
+                    figure,
+                    profile,
+                )
+                for figure in header_figures
+            ]
+
+            linked_panel_items = [
+                item
+                for item in linked_panel_items
+                if item
+            ]
+
+            st.markdown(
+                (
+                    "**이 method가 연결된 Figure / panel:** "
+                    if lang == "ko"
+                    else "**Figures / panels linked to this method:** "
+                )
+                + " · ".join(
+                    linked_panel_items
+                )
+            )
+        else:
+            st.caption(
+                L(
+                    lang,
+                    "이 논문에는 현재 직접 연결된 Figure 번호가 없습니다.",
+                    "No Figure number is directly linked to this method in the current corpus.",
+                )
+            )
 
         link1, link2 = st.columns(2)
 
@@ -2520,7 +3298,7 @@ for paper in filtered_papers[
             )
 
             st.markdown(
-                f"#### {fig_name}"
+                f"#### 🧬 {normalize_figure_label(fig_name)}"
             )
 
             href = (
@@ -2614,6 +3392,12 @@ for paper in filtered_papers[
                 st.write(
                     caption
                 )
+
+            render_panel_method_usage(
+                fig,
+                profile,
+                lang,
+            )
 
 
 st.caption(

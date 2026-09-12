@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.5.4-beta] - 2026-09-12
+
+### Panel-level Method Map
+- Extended Method -> Paper links from Figure-level to caption-grounded panel-level mapping
+- Parses `(A)`, `(A-C)`, `(A and B)`, and similar panel markers
+- Shows `Fig. 2A-C` in paper result headers when panel evidence is available
+- Displays how the method is used in each mapped panel using the original caption text
+- Distinguishes explicit panel mentions from Figure-level method context
+- Avoids guessing when the Figure legend does not support a panel-level assignment
+
+## [0.5.3-beta] - 2026-09-12
+
+### Method -> Paper Figure index
+- Paper result headers now show Figure numbers linked to the selected method
+- Added an explicit linked-Figure row inside each paper card
+- Caption searches prioritize the Figure numbers that actually matched the query
+- Reuses the existing paper/Figure corpus; no new SQL or storage is required
+
 ## [0.5.2.2-beta] - 2026-09-12
 
 ### Schema-free Method Wiki
