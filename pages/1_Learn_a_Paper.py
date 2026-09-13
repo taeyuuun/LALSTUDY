@@ -53,7 +53,7 @@ from source_pdf_figure_extractor import (
     available as source_pdf_extractor_available,
 )
 
-APP_VERSION = "v0.6.4.3-open-beta"
+APP_VERSION = "v0.6.4.4-open-beta"
 METHOD_PROFILE_FILE = Path("method_profiles.json")
 
 st.set_page_config(
@@ -280,7 +280,7 @@ def get_study_figures(file_bytes, paper_hash):
 
 
 @st.cache_data(show_spinner=False)
-def get_source_pdf_figures_v3(
+def get_source_pdf_figures_v4(
     file_bytes,
     paper_hash,
 ):
@@ -1317,7 +1317,7 @@ mineru_token = get_mineru_token()
 # ============================================================
 
 source_figure_state_key = (
-    "lal_source_pdf_figures:v3:"
+    "lal_source_pdf_figures:v4:"
     + active_hash()
 )
 
@@ -1348,7 +1348,7 @@ if (
     figure_extraction_engine = (
         source_record.get(
             "engine",
-            "source_pdf_caption_v3",
+            "source_pdf_caption_v4",
         )
     )
 
@@ -1416,13 +1416,13 @@ def prepare_main_figures(
             source_figure_state_key
         ] = {
             "engine": (
-                "source_pdf_caption_v3"
+                "source_pdf_caption_v4"
             ),
             "figures": figures,
         }
         return (
             figures,
-            "source_pdf_caption_v3",
+            "source_pdf_caption_v4",
         )
 
     if (
@@ -2025,7 +2025,7 @@ if (
     figure_extraction_engine = (
         source_record.get(
             "engine",
-            "source_pdf_caption_v3",
+            "source_pdf_caption_v4",
         )
     )
 

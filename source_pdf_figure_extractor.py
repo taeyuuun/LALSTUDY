@@ -10,11 +10,22 @@ except Exception:
     fitz = None
 
 
-EXTRACTOR_VERSION = "3"
-ENGINE_NAME = "source_pdf_caption_v3"
+EXTRACTOR_VERSION = "4"
+ENGINE_NAME = "source_pdf_caption_v4"
 
 CAPTION_START_RE = re.compile(
     r"^\s*(?:fig(?:ure)?\.?\s*)(\d+)\b",
+    re.IGNORECASE,
+)
+
+
+SHORT_FIGURE_LABEL_RE = re.compile(
+    r"^\s*(?:fig(?:ure)?\.?\s*)(\d+)\b",
+    re.IGNORECASE,
+)
+
+TABLE_LABEL_RE = re.compile(
+    r"^\s*table\s+\d+\b",
     re.IGNORECASE,
 )
 
@@ -727,11 +738,493 @@ def _select_candidate(
     return same_candidate
 
 
+
+def _short_figure_label_on_page(
+    page,
+) -> Optional[int]:
+    """
+    Find a short text label such as "Figure 3" on a visual page.
+
+    Long blocks are deliberately ignored because those are usually legends,
+    not labels attached to the Figure itself.
+    """
+    for block in page.get_text("dict").get("blocks", []):
+        if block.get("type") != 0:
+            continue
+
+        text = _block_text(block).strip()
+
+        if (
+            not text
+            or len(text) > 90
+            or len(text.split()) > 16
+        ):
+            continue
+
+        match = SHORT_FIGURE_LABEL_RE.match(text)
+
+        if match:
+            return int(match.group(1))
+
+    return None
+
+
+def _page_has_table_label(
+    page,
+) -> bool:
+    for block in page.get_text("dict").get("blocks", []):
+        if block.get("type") != 0:
+            continue
+
+        text = _block_text(block).strip()
+
+        if (
+            text
+            and len(text) <= 100
+            and TABLE_LABEL_RE.match(text)
+        ):
+            return True
+
+    return False
+
+
+def _page_visual_bounds(
+    page,
+):
+    """
+    Build a tight-ish bounding box around raster images and vector graphics.
+
+    This is used only for detached Figure pages near the end of a manuscript.
+    """
+    visual_rects = []
+
+    try:
+        for block in page.get_text("dict").get("blocks", []):
+            if block.get("type") != 1:
+                continue
+
+            bbox = block.get("bbox")
+
+            if (
+                bbox
+                and len(bbox) == 4
+            ):
+                rect = fitz.Rect(bbox)
+
+                if rect.get_area() >= 900:
+                    visual_rects.append(rect)
+    except Exception:
+        pass
+
+    try:
+        for drawing in page.get_drawings():
+            drect = drawing.get("rect")
+
+            if drect is None:
+                continue
+
+            rect = fitz.Rect(drect)
+
+            # Ignore tiny ticks / glyph-like drawing fragments.
+            if rect.get_area() >= 80:
+                visual_rects.append(rect)
+    except Exception:
+        pass
+
+    if not visual_rects:
+        return None
+
+    union = fitz.Rect(visual_rects[0])
+
+    for rect in visual_rects[1:]:
+        union.include_rect(rect)
+
+    # Expand to include nearby panel labels / axis text.
+    expanded = fitz.Rect(
+        union.x0 - 18,
+        union.y0 - 24,
+        union.x1 + 18,
+        union.y1 + 24,
+    ) & page.rect
+
+    try:
+        for block in page.get_text("dict").get("blocks", []):
+            if block.get("type") != 0:
+                continue
+
+            bbox = block.get("bbox")
+
+            if (
+                not bbox
+                or len(bbox) != 4
+            ):
+                continue
+
+            text = _block_text(block).strip()
+
+            if (
+                not text
+                or _looks_like_prose(text)
+                or len(text) > 180
+            ):
+                continue
+
+            block_rect = fitz.Rect(bbox)
+
+            nearby = fitz.Rect(
+                expanded.x0 - 10,
+                expanded.y0 - 35,
+                expanded.x1 + 10,
+                expanded.y1 + 35,
+            ) & page.rect
+
+            if (
+                block_rect
+                & nearby
+            ).get_area() > 0:
+                union.include_rect(block_rect)
+    except Exception:
+        pass
+
+    union = fitz.Rect(
+        union.x0 - 14,
+        union.y0 - 14,
+        union.x1 + 14,
+        union.y1 + 14,
+    ) & page.rect
+
+    if (
+        union.width < 80
+        or union.height < 80
+    ):
+        return None
+
+    return union
+
+
+def _scan_detached_endmatter_pages(
+    doc,
+    captions: List[Dict],
+) -> List[Dict]:
+    """
+    Scan pages AFTER the final text caption for appended Figure pages.
+
+    This specifically targets preprint/manuscript layouts where all legends
+    are in the manuscript body and the actual Figures are appended at the end.
+    """
+    if not captions:
+        return []
+
+    last_caption_page = max(
+        int(item["page_idx"])
+        for item in captions
+    )
+
+    if last_caption_page >= len(doc) - 1:
+        return []
+
+    candidates = []
+
+    for page_idx in range(
+        last_caption_page + 1,
+        len(doc),
+    ):
+        page = doc[page_idx]
+
+        explicit_number = (
+            _short_figure_label_on_page(
+                page
+            )
+        )
+
+        # A clearly labelled Table page should not be silently consumed
+        # by the sequential Figure fallback.
+        if (
+            explicit_number is None
+            and _page_has_table_label(page)
+        ):
+            continue
+
+        rect = _page_visual_bounds(
+            page
+        )
+
+        if rect is None:
+            continue
+
+        evidence = _visual_evidence(
+            page,
+            rect,
+        )
+
+        page_area = max(
+            1.0,
+            float(
+                page.rect.width
+                * page.rect.height
+            ),
+        )
+
+        area_fraction = (
+            float(
+                rect.width
+                * rect.height
+            )
+            / page_area
+        )
+
+        has_real_visual = (
+            evidence.get(
+                "raster_count",
+                0,
+            )
+            >= 1
+            or (
+                evidence.get(
+                    "drawing_count",
+                    0,
+                )
+                >= 1
+                and area_fraction >= 0.16
+            )
+        )
+
+        if not has_real_visual:
+            continue
+
+        # Explicit Figure labels are strong evidence.
+        if explicit_number is not None:
+            min_score = 0.20
+        else:
+            min_score = 0.95
+
+        if (
+            float(
+                evidence.get(
+                    "score",
+                    0.0,
+                )
+            )
+            < min_score
+            or area_fraction < 0.10
+        ):
+            continue
+
+        candidates.append(
+            {
+                "page_idx": page_idx,
+                "rect": rect,
+                "evidence": evidence,
+                "mode": "detached_endmatter",
+                "explicit_number": explicit_number,
+                "area_fraction": round(
+                    area_fraction,
+                    4,
+                ),
+            }
+        )
+
+    return candidates
+
+
+def _build_detached_figure_map(
+    doc,
+    captions: List[Dict],
+) -> Dict[str, Dict]:
+    """
+    Match appended endmatter Figure pages to text captions.
+
+    Matching order:
+    1) explicit short "Figure N" label on the visual page
+    2) exact-count sequential fallback
+
+    The sequential fallback is intentionally conservative. It is only used
+    when the number of remaining visual pages exactly matches the number of
+    remaining Figure captions.
+    """
+    candidates = _scan_detached_endmatter_pages(
+        doc,
+        captions,
+    )
+
+    if not candidates:
+        return {}
+
+    caption_by_number = {
+        int(item["number"]): item
+        for item in captions
+    }
+
+    result = {}
+    used_pages = set()
+
+    # Strong mapping: explicit Figure N text on the appended visual page.
+    for candidate in candidates:
+        number = candidate.get(
+            "explicit_number"
+        )
+
+        if (
+            number is None
+            or number not in caption_by_number
+        ):
+            continue
+
+        key = _figure_key(
+            str(number)
+        )
+
+        old = result.get(
+            key
+        )
+
+        if (
+            old is None
+            or float(
+                candidate["evidence"]["score"]
+            )
+            > float(
+                old["evidence"]["score"]
+            )
+        ):
+            mapped = dict(candidate)
+            mapped[
+                "match_confidence"
+            ] = "explicit_label"
+            result[key] = mapped
+            used_pages.add(
+                candidate["page_idx"]
+            )
+
+    unresolved = [
+        item
+        for item in captions
+        if item["figure_key"] not in result
+    ]
+
+    unused_candidates = [
+        item
+        for item in candidates
+        if (
+            item["page_idx"]
+            not in used_pages
+            and item.get(
+                "explicit_number"
+            )
+            is None
+        )
+    ]
+
+    unresolved.sort(
+        key=lambda x: int(
+            x["number"]
+        )
+    )
+    unused_candidates.sort(
+        key=lambda x: int(
+            x["page_idx"]
+        )
+    )
+
+    # Conservative bioRxiv/preprint fallback:
+    # if appended visual pages and unresolved captions have an exact 1:1
+    # count, map them in manuscript order.
+    if (
+        unresolved
+        and len(unresolved)
+        == len(unused_candidates)
+    ):
+        for caption, candidate in zip(
+            unresolved,
+            unused_candidates,
+        ):
+            mapped = dict(candidate)
+            mapped[
+                "match_confidence"
+            ] = "sequential_exact"
+            result[
+                caption["figure_key"]
+            ] = mapped
+
+    return result
+
+
+def _choose_local_or_detached(
+    *,
+    local_candidate,
+    detached_candidate,
+    caption_page_idx: int,
+):
+    if detached_candidate is None:
+        return local_candidate
+
+    if local_candidate is None:
+        return detached_candidate
+
+    detached_page_idx = int(
+        detached_candidate[
+            "page_idx"
+        ]
+    )
+
+    if detached_page_idx <= caption_page_idx:
+        return local_candidate
+
+    local_score = float(
+        local_candidate.get(
+            "evidence",
+            {},
+        ).get(
+            "score",
+            0.0,
+        )
+    )
+
+    detached_score = float(
+        detached_candidate.get(
+            "evidence",
+            {},
+        ).get(
+            "score",
+            0.0,
+        )
+    )
+
+    confidence = detached_candidate.get(
+        "match_confidence",
+        "",
+    )
+
+    # An explicit Figure number on the appended page is the strongest signal.
+    if (
+        confidence == "explicit_label"
+        and detached_score >= 0.20
+    ):
+        return detached_candidate
+
+    # Exact-count sequential mapping is only available when the entire
+    # appended Figure run lines up 1:1 with unresolved captions.
+    if (
+        confidence == "sequential_exact"
+        and detached_score >= 0.95
+        and (
+            local_score < 2.40
+            or detached_score
+            >= local_score - 0.35
+        )
+    ):
+        return detached_candidate
+
+    return local_candidate
+
+
+
 def _render_candidate(
     *,
     doc,
     item: Dict,
     cache_dir: Path,
+    detached_candidate: Optional[Dict] = None,
 ) -> Optional[Dict]:
     caption_page = doc[
         item["page_idx"]
@@ -762,11 +1255,19 @@ def _render_candidate(
             )
         )
 
-    selected = _select_candidate(
+    local_selected = _select_candidate(
         caption_page=caption_page,
         caption_rect=caption_rect,
         same_candidate=same_candidate,
         previous_candidate=previous_candidate,
+    )
+
+    selected = _choose_local_or_detached(
+        local_candidate=local_selected,
+        detached_candidate=detached_candidate,
+        caption_page_idx=int(
+            item["page_idx"]
+        ),
     )
 
     if selected is None:
@@ -787,11 +1288,20 @@ def _render_candidate(
         alpha=False,
     )
 
-    suffix = (
-        "_cross_page"
-        if selected["mode"]
-        == "previous_page"
-        else "_same_page"
+    mode = selected.get(
+        "mode",
+        "same_page",
+    )
+
+    suffix_map = {
+        "previous_page": "_cross_page",
+        "detached_endmatter": "_endmatter",
+        "same_page": "_same_page",
+    }
+
+    suffix = suffix_map.get(
+        mode,
+        "_figure",
     )
 
     out = (
@@ -799,7 +1309,7 @@ def _render_candidate(
         / (
             item["figure_key"]
             + suffix
-            + "_source_pdf_v3.png"
+            + "_source_pdf_v4.png"
         )
     )
 
@@ -827,12 +1337,14 @@ def _render_candidate(
                 rect.y1,
             ]
         ],
-        "selection_mode": selected[
-            "mode"
-        ],
+        "selection_mode": mode,
         "selection_score": selected[
             "evidence"
         ],
+        "match_confidence": selected.get(
+            "match_confidence",
+            "local",
+        ),
     }
 
 
@@ -840,16 +1352,17 @@ def extract_figures_from_source_pdf(
     *,
     pdf_bytes: bytes,
     paper_hash: str,
-    cache_root: str = "figure_cache/source_pdf_v3",
+    cache_root: str = "figure_cache/source_pdf_v4",
     force: bool = False,
 ) -> List[Dict]:
     """
     Deterministic Figure extraction from the original uploaded PDF.
 
-    v3 adds cross-page awareness:
-    - normal case: Figure and legend/caption are on the same PDF page
-    - cross-page case: Figure ends on the previous page and its caption starts
-      on the next page
+    v4 supports three common manuscript layouts:
+    - normal: Figure and legend/caption on the same PDF page
+    - cross-page: Figure on the previous page, caption on the next page
+    - detached endmatter: legends in the manuscript body, Figures appended
+      together near the end of the PDF (common in preprints/manuscripts)
 
     No AI/API call is used.
     """
@@ -928,11 +1441,23 @@ def extract_figures_from_source_pdf(
 
         figures = []
 
+        detached_map = (
+            _build_detached_figure_map(
+                doc,
+                captions,
+            )
+        )
+
         for item in captions:
             rendered = _render_candidate(
                 doc=doc,
                 item=item,
                 cache_dir=cache_dir,
+                detached_candidate=(
+                    detached_map.get(
+                        item["figure_key"]
+                    )
+                ),
             )
 
             if rendered is None:
@@ -986,19 +1511,38 @@ def extract_figures_from_source_pdf(
                     ],
                     "engine": ENGINE_NAME,
                     "asset_mode": (
-                        "original_pdf_caption_anchor_cross_page"
+                        "original_pdf_detached_endmatter"
                         if rendered[
                             "selection_mode"
                         ]
-                        == "previous_page"
-                        else
-                        "original_pdf_caption_anchor_direct"
+                        == "detached_endmatter"
+                        else (
+                            "original_pdf_caption_anchor_cross_page"
+                            if rendered[
+                                "selection_mode"
+                            ]
+                            == "previous_page"
+                            else
+                            "original_pdf_caption_anchor_direct"
+                        )
                     ),
                     "cross_page": (
                         rendered[
+                            "figure_page_idx"
+                        ]
+                        != rendered[
+                            "caption_page_idx"
+                        ]
+                    ),
+                    "detached_endmatter": (
+                        rendered[
                             "selection_mode"
                         ]
-                        == "previous_page"
+                        == "detached_endmatter"
+                    ),
+                    "match_confidence": rendered.get(
+                        "match_confidence",
+                        "local",
                     ),
                     "selection_mode": rendered[
                         "selection_mode"
